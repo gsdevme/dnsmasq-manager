@@ -15,7 +15,7 @@ GO_BIN_DIR = $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 # so lint works in shells where the Go bin directory is not on PATH.
 GOLANGCI_LINT ?= $(or $(shell command -v golangci-lint 2>/dev/null),$(GO_BIN_DIR)/golangci-lint)
 
-.PHONY: build dist test test-hook test-install lint tools integration integration-docker
+.PHONY: build dist test test-hook test-install test-install-docker lint tools integration integration-docker
 
 # Static linux/amd64 binary for the DNS host; CGO off keeps it statically linked.
 build:
@@ -42,6 +42,16 @@ test-hook:
 # shell in TEST_SH (default /bin/dash) to run the installer.
 test-install:
 	bash test/install/install_test.sh
+
+# Runs install.sh end to end in alpine:3.23 against the real binary served
+# over local HTTP, then the stub suite under BusyBox ash. dist/ is excluded
+# from the build context, so it is bind-mounted at /dist. --platform
+# linux/amd64 makes uname -m report x86_64 on arm64 hosts, which the
+# installer requires.
+test-install-docker:
+	$(MAKE) dist VERSION=v0.0.0-e2e
+	docker build --platform linux/amd64 -f test/install/Dockerfile -t dnsmasq-manager-install-e2e .
+	docker run --rm --platform linux/amd64 -v "$(CURDIR)/dist:/dist:ro" dnsmasq-manager-install-e2e
 
 lint:
 	$(GOLANGCI_LINT) run ./...
