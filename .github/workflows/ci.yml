@@ -27,8 +27,9 @@ concurrency:
 
 jobs:
   # Static analysis plus the fast tests: Go unit tests (with the race
-  # detector) and the session-start hook tests, which run against stub
-  # commands and need only bash.
+  # detector), the session-start hook tests and the installer's stub suite,
+  # which run against stub commands and need only bash (and dash for the
+  # installer), and shellcheck on the installer.
   lint-and-unit:
     runs-on: ubuntu-24.04
     steps:
@@ -47,6 +48,28 @@ jobs:
       # `go test -race` needs cgo and a C compiler; gcc ships on the runner.
       - run: make test
       - run: make test-hook
+      # The installer's stub suite runs install.sh under TEST_SH, default
+      # /bin/dash. Ubuntu ships dash in every install as the shell /bin/sh
+      # links to, so /bin/dash exists on the runner without any setup.
+      - run: make test-install
+      # shellcheck is expected to be preinstalled on the runner. It is called
+      # directly, so if it is ever missing this step fails rather than
+      # silently skipping the check.
+      - run: shellcheck --shell=sh install.sh
+
+  # The installer end to end in Alpine 3.23, the minimum it supports: the
+  # real install.sh under BusyBox ash, fetching the real binary from a local
+  # HTTP server in the container, then the stub suite under BusyBox ash.
+  # Docker is preinstalled on the runner. Go is set up because the make
+  # target builds dist/ on the runner and bind-mounts it into the container.
+  install-alpine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make test-install-docker
 
   # Integration probes against Ubuntu's packaged dnsmasq, run directly on the
   # runner. This catches behaviour that differs from the pinned Alpine
