@@ -3,18 +3,23 @@
 This is the input to the service design. The original requirements, handed
 over from the owner's homelab session, are at the end of this file unchanged.
 The two sections before them take precedence where they differ: corrections
-found by checking the real DNS host, dnsmasq 2.85 and external-dns v0.24.0,
+found by checking the real DNS host, dnsmasq 2.91 and external-dns v0.24.0,
 and additions from the owner. The zone is written as `<private-zone>`
 throughout; the real zone is supplied as config.
 
 ## Corrections from verification
 
-- The DNS host runs Alpine Linux 3.12 (x86_64) with OpenRC, not systemd. An
-  OpenRC init script replaces the systemd unit, an `rc-service` reload
-  replaces `systemctl reload`, and there is no journald, so "stdout/journald"
-  logging means stdout.
-- dnsmasq is 2.85, built with inotify, and there is a single instance on one
-  server. No replication is needed.
+- The DNS host runs Alpine Linux 3.23.8 with dnsmasq 2.91 (owner-reported on
+  2026-11-17, after the upgrade). It was x86_64 when inspected before the
+  upgrade. Alpine uses OpenRC, not systemd: an OpenRC init script replaces
+  the systemd unit, an `rc-service` reload replaces `systemctl reload`, and
+  there is no journald, so "stdout/journald" logging means stdout.
+- dnsmasq reports `Dnsmasq version 2.91  Copyright (c) 2000-2025 Simon Kelley`.
+  There is a single instance on one server. No replication is needed. The
+  hosts directory relies on inotify. The production build's compile-time
+  options have not been re-read since the upgrade; the `alpine:3.23` package
+  (`dnsmasq-2.91-r1`), the one an Alpine 3.23 host installs, lists
+  `inotify`.
 - Bearer-token auth cannot apply to the external-dns side. The external-dns
   v0.24.0 webhook client sends only the `Accept` and `Content-Type` headers,
   and has no flags for custom headers, client certificates or a custom CA.
@@ -28,31 +33,33 @@ throughout; the real zone is supplied as config.
   `GET /records`. They can therefore be held in the service's state and
   returned from `GET /records` without being published in DNS.
 - Existing wildcard `address=` entries coexist with the service during
-  rollout. On 2.85 a hosts-dir record takes precedence over a wildcard
+  rollout. On 2.91 a hosts-dir record takes precedence over a wildcard
   `address=` entry that also matches the name, and it is served as soon as
   inotify reads the file, with no reload
   (`TestHostsDirRecordBeatsWildcardWithoutReload`).
-- Reloads are needed for more than deletes. The original says adds and
-  updates are file writes only; the probes on 2.85 found:
-  - an added record is served without a signal;
-  - removing a record from the file leaves it served until dnsmasq gets
-    SIGHUP, while dnsmasq 2.88 and later drop it without one
-    (`TestHostsDirRemovalDropsRecord`);
-  - updating a record's address adds the new address but keeps the old one,
-    so the name answers with both until SIGHUP, after which only the new
-    address is served; dnsmasq 2.88 and later serve only the new address
-    without a signal (`TestHostsDirUpdateDropsOldAddress`);
-  - deleting the managed file is not acted on either: the old records stay
-    served until SIGHUP, so the service should empty the file rather than
-    delete it (2.88 and later drop a deleted file's records);
+- Deletes do not need a reload on 2.91. The original says adds and updates
+  are file writes only and deletes must also send SIGHUP; the probes on 2.91
+  found that every hosts-directory change takes effect through inotify
+  without a signal:
+  - an added record is served at once
+    (`TestHostsDirRecordBeatsWildcardWithoutReload`);
+  - updating a record's address replaces the old address, so only the new
+    one is served (`TestHostsDirUpdateDropsOldAddress`);
+  - removing a record from the file stops it being served and the name falls
+    back to any matching wildcard (`TestHostsDirRemovalDropsRecord`);
+  - deleting the managed file drops its records too (checked by hand, not by
+    a probe);
   - dnsmasq ignores dotfiles in the hosts directory, so writing a
     dot-prefixed temporary file and renaming it over the managed file never
     exposes a partial file.
 
-  The simplest correct rule is to send SIGHUP after every write of the
-  managed file; it is also correct and harmless on 2.88 and later, which
-  the service's own tests run against in CI. Details are in
-  [`docs/dnsmasq-findings.md`](../dnsmasq-findings.md).
+  A SIGHUP after a write was verified harmless: the update and removal
+  probes check the answer is unchanged one second after SIGHUP, and a manual
+  run that signalled immediately after each write agrees.
+  Whether the service still sends one as a belt-and-braces step is a
+  service-design decision. dnsmasq before 2.88 did need SIGHUP for updates
+  and removals, which is part of why older versions are not supported.
+  Details are in [`docs/dnsmasq-findings.md`](../dnsmasq-findings.md).
 
 ## Added by the owner
 
@@ -62,10 +69,10 @@ throughout; the real zone is supplied as config.
 - The aim is to retire the `lan-dns` repo. The service takes over what that
   repo does today, and the few hand-written rules that are still wanted move
   into the service's own config file.
-- Upgrading dnsmasq on the DNS host is an open option the owner raised on
-  2026-11-17, to remove the 2.85 reload requirement for updates and
-  removals. Not decided; see
-  [Option: upgrading dnsmasq on the DNS host](../dnsmasq-findings.md#option-upgrading-dnsmasq-on-the-dns-host).
+- The DNS host was upgraded to Alpine 3.23 and dnsmasq 2.91 on 2026-11-17,
+  and those are the minimum supported targets (owner's decision). The
+  service and its tests need not handle older releases; see
+  [Supported version](../dnsmasq-findings.md#supported-version).
 - Standard library first. The service is expected to be built on `net/http`,
   `log/slog`, `html/template`, `encoding/json` and `testing`. Any third-party
   dependency needs a stated reason in the design doc that introduces it.

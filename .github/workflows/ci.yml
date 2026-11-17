@@ -76,10 +76,11 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dnsmasq-base dnsutils
       - run: make integration
 
-  # Integration probes in Alpine against dnsmasq 2.85, the version the
-  # production host runs. The Dockerfile builds the test binary in a Go image
-  # and asserts the dnsmasq version, so the job needs only Docker, which is
-  # preinstalled on the runner; no Go setup is required.
+  # Integration probes in Alpine 3.23 against dnsmasq 2.91, the release and
+  # version the production host runs and the minimums the service supports.
+  # The Dockerfile builds the test binary in a Go image and asserts the dnsmasq
+  # version, so the job needs only Docker, which is preinstalled on the
+  # runner; no Go setup is required.
   integration-alpine:
     runs-on: ubuntu-24.04
     steps:

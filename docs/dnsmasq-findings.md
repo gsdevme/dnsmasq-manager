@@ -6,66 +6,129 @@ hosts directory (`--hostsdir`) that the tests write to. The service design
 relies on these results, so re-run the probes (`make integration-docker`)
 before changing how the service writes records or signals dnsmasq.
 
+## Supported version
+
+- Production runs Alpine Linux 3.23.8 and dnsmasq 2.91. After the owner's
+  upgrade on 2026-11-17 the DNS host reports `3.23.8` in
+  `/etc/alpine-release` and
+  `Dnsmasq version 2.91  Copyright (c) 2000-2025 Simon Kelley`.
+- Alpine 3.23 and dnsmasq 2.91 are the minimum supported targets (owner's
+  decision, 2026-11-17). The service and the probes target them and later
+  releases only.
+- The probe image is pinned to `alpine:3.23`, and the probe harness enforces
+  the dnsmasq minimum: `startDnsmasq` fails the test at once, naming
+  the minimum and the version found, when the installed dnsmasq is older than
+  2.91 or its version line cannot be parsed (`checkMinVersion` in
+  `test/integration/harness_test.go`). Run against 2.85 every probe fails
+  immediately with
+  `dnsmasq 2.91 or later is required, found 2.85 ("Dnsmasq version 2.85  Copyright (c) 2000-2021 Simon Kelley")`.
+
 ## Environment
 
-- Production host: Alpine 3.12, dnsmasq 2.85.
-- Probe image: `alpine:3.12`, whose `dnsmasq` package is `2.85-r0`, so no
-  newer Alpine release was needed. The image build fails on any other version.
-- dnsmasq is built with `inotify`, which is what reads hosts-directory
-  changes without a signal.
+- Probe image: `alpine:3.23` (`3.23.8`), whose `dnsmasq` package is
+  `2.91-r1` on both x86_64 and aarch64. The image build fails on any other
+  dnsmasq version. (`alpine:3.22` also packages 2.91 and `alpine:3.21`
+  packages 2.90, as of 2026-11-17.)
+- The `alpine:3.23` package lists `inotify` in its compile-time options,
+  which is what reads hosts-directory changes without a signal:
+  `IPv6 GNU-getopt no-DBus no-UBus no-i18n no-IDN DHCP DHCPv6 no-Lua TFTP no-conntrack ipset no-nftset auth no-DNSSEC loop-detect inotify dumpfile`.
+- CI's `integration-ubuntu` job runs the same probes directly on
+  `ubuntu-24.04`, whose `dnsmasq-base` is `2.91-0ubuntu0.24.04.2`. Cloud
+  sessions use whatever the distribution packages; the harness refuses
+  anything older than 2.91.
 - Each test starts its own dnsmasq with an empty hosts directory and writes a
   single file, `managed.hosts`, by writing a dot-prefixed temporary file in
   the same directory and renaming it into place.
-- The probes also run against newer dnsmasq: CI's `integration-ubuntu` job
-  and cloud sessions use whatever the distribution packages. dnsmasq changed
-  how it handles hosts-directory updates and removals in 2.88 (see
-  [Version difference](#version-difference-288)), so the two probes that
-  depend on it pick their assertions from the dnsmasq version
-  (`hostsDirFlushes` in `test/integration/harness_test.go`).
 
-## Probes
+## Probes on 2.91
 
-| Probe | Expected | Observed on 2.85 | Observed on 2.88 and later | Service design | Ubuntu CI version |
-| --- | --- | --- | --- | --- | --- |
-| `TestMockConfigAnswersLocalNames` | Exact `address=` names, `.home.example.test` wildcards and `.zip` answer locally. | As expected: `nas.home.example.test` is 10.0.0.40, any other name under the wildcard is 10.0.0.17, `example.zip` is 127.0.0.1. | Same as 2.85. | The mock config is a usable stand-in for the live file. More specific `address=` entries beat the wildcard. | 2.91 (`2.91-0ubuntu0.24.04.2`): same as 2.85. Confirmed by the `integration-ubuntu` CI job on `ubuntu-24.04` (2026-11-17), which logged `Dnsmasq version 2.91` and passed. |
-| `TestHostsDirRecordBeatsWildcardWithoutReload` | A hosts-directory record overrides the `address=/.home.example.test/` wildcard, with no SIGHUP. | As expected: the answer changes from 10.0.0.17 to 10.0.0.80 as soon as inotify reads the file. | Same as 2.85. | The service can add names under `<private-zone>` by writing the hosts directory alone; the wildcard does not shadow them. | 2.91: same as 2.85. Confirmed by the `integration-ubuntu` CI job on `ubuntu-24.04` (2026-11-17), which logged `Dnsmasq version 2.91` and passed. |
-| `TestHostsDirUpdateDropsOldAddress` (originally `TestHostsDirUpdateWithoutReload`, then `TestHostsDirUpdateKeepsOldAddressUntilReload`) | Changing a record's address replaces the old answer without a SIGHUP. | **Differs.** The new address is added but the old one is kept: the name answers both 10.0.0.80 and 10.0.0.81 until SIGHUP, after which only 10.0.0.81 is served. | As expected: only 10.0.0.81 is served as soon as inotify reads the file. A SIGHUP afterwards still serves only 10.0.0.81. | On 2.85 an address change is not complete until the service sends SIGHUP; without it clients get both addresses. | 2.91: as on 2.88 and later. Confirmed by the `integration-ubuntu` CI job on `ubuntu-24.04` (2026-11-17), which logged `Dnsmasq version 2.91` and passed. |
-| `TestHostsDirRemovalDropsRecord` (originally `TestHostsDirRemovalNeedsReload`) | Emptying the file leaves the removed record served until SIGHUP. | As expected: 10.0.0.80 is still served two seconds after the file is emptied; after SIGHUP the name falls back to the wildcard (10.0.0.17). | **Differs from the expectation.** The name falls back to the wildcard (10.0.0.17) as soon as inotify reads the emptied file. A SIGHUP afterwards still answers 10.0.0.17. | On 2.85 removing a record needs SIGHUP. | 2.91: as on 2.88 and later. Confirmed by the `integration-ubuntu` CI job on `ubuntu-24.04` (2026-11-17), which logged `Dnsmasq version 2.91` and passed. |
+Every probe passes on 2.91 in `make integration-docker` (`alpine:3.23`) and
+in `make integration` as a non-root user in `golang:1.27` (Debian). CI's
+`integration-ubuntu` job on `ubuntu-24.04` (2026-11-17) logged
+`Dnsmasq version 2.91` and passed with the earlier version-aware probes,
+which on 2.91 assert the same as these. No probe needs a SIGHUP to pass.
+
+| Probe | Observed on 2.91 | Service design |
+| --- | --- | --- |
+| `TestMockConfigAnswersLocalNames` | `nas.home.example.test` is 10.0.0.40, any other name under the `.home.example.test` wildcard is 10.0.0.17, `example.zip` is 127.0.0.1, all answered locally. | The mock config is a usable stand-in for the live file. More specific `address=` entries beat the wildcard. |
+| `TestHostsDirRecordBeatsWildcardWithoutReload` | A record added to the hosts directory overrides the `address=/.home.example.test/` wildcard: the answer changes from 10.0.0.17 to 10.0.0.80 as soon as inotify reads the file, with no SIGHUP. | The service can add names under `<private-zone>` by writing the hosts directory alone; the wildcard does not shadow them. |
+| `TestHostsDirUpdateDropsOldAddress` | Changing the record from 10.0.0.80 to 10.0.0.81 replaces the old address as soon as inotify reads the file, with no SIGHUP: only 10.0.0.81 is served. One second after a SIGHUP the answer is still only 10.0.0.81. | An address change is complete once the file is written. |
+| `TestHostsDirRemovalDropsRecord` | Emptying the file makes the name fall back to the wildcard (10.0.0.17) as soon as inotify reads it, with no SIGHUP. One second after a SIGHUP the answer is still 10.0.0.17. | A removal is complete once the file is written. |
+
+On an update or removal the dnsmasq log shows
+`inotify: flushed 1 names read from .../managed.hosts` before it rereads the
+file, which is the step that drops the old records.
 
 ## What this means for the service
 
 - **Precedence:** hosts-directory records beat `address=` wildcards, so a
   managed record for a name under a wildcard domain is served.
-- **Additions** take effect without a signal, on every version tested.
-- **Updates and removals** on 2.85 (production) do not: dnsmasq 2.85
-  rereads a changed hosts file and adds its entries, but never drops the
-  entries the previous version of the file contributed. Only SIGHUP (which
-  clears the cache and rereads every hosts file) removes them. From 2.88
-  dnsmasq drops them itself.
-- **The rule is: send SIGHUP after every write of the managed file.** It is
-  required on 2.85 and correct and harmless on 2.88 and later. The probes
-  send SIGHUP after each update and removal and assert the answer is still
-  right on every version. A manual run also sent SIGHUP immediately after
-  each write (add, update, empty) and the next query, at once and one second
-  later, gave only the file's current records on 2.85, 2.86, 2.87, 2.88,
-  2.89, 2.90 and 2.91.
-- **Deleting the file** is not acted on by 2.85: a manual check showed that
-  `rm managed.hosts` logs nothing and the old records keep being served
-  until SIGHUP. From 2.88 dnsmasq logs `inotify: ... removed` and drops the
-  file's records at once. The service should empty the file rather than
-  delete it, and signal either way.
+- **Additions, updates and removals** in the hosts directory take effect
+  through inotify without a reload. That is probe-verified on 2.91.
+- **Deleting the managed file** also drops its records at once on 2.91:
+  dnsmasq logs `inotify: ... removed` and the name falls back to the
+  wildcard. This was checked by hand, not by a probe. Emptying the file and
+  deleting it both work; which the service does is a design choice.
+- **SIGHUP** is not needed for hosts-directory changes on 2.91. It was
+  verified harmless: the update and removal probes send SIGHUP after the
+  change and check the answer is unchanged one second later, and a manual
+  run that sent SIGHUP immediately after each write (add, update, empty)
+  gave only the file's current records at once and one second later.
+  Whether the service still
+  sends SIGHUP after each write as a belt-and-braces step is a service-design
+  decision. If it does not, it needs neither dnsmasq's PID nor permission to
+  signal it.
 - **Temporary files:** dnsmasq ignores dotfiles in the hosts directory. The
   logs show inotify events only for `managed.hosts`, never for the
   `.managed.hosts.*` temporary file, so writing a dot-prefixed temporary
   file in the same directory and renaming it over the managed file is safe:
-  dnsmasq never reads a partial file.
+  dnsmasq never reads a partial file. The service still needs this.
+- **inotify** must be in the dnsmasq build; the hosts directory relies on it
+  for every change.
 
-## Version difference (2.88)
+Not verified:
 
-dnsmasq 2.88 and later drop the records a hosts-directory file contributed
-when inotify sees that file change or disappear; 2.87 and earlier keep them
-until SIGHUP. On 2.91 the log shows the extra step as
-`inotify: flushed 1 names read from .../managed.hosts` before the reread.
+- The production build's compile-time options, including `inotify`. They
+  were read on the host before the upgrade (2.85) but not since; only the
+  version line was reported after it. `dnsmasq --version` prints them. The
+  `alpine:3.23` package lists `inotify` (above).
+- Changes outside the hosts directory, such as edits to the main config;
+  those were not probed, so whether they need a SIGHUP or a restart is open.
+- Behaviour of releases newer than 2.91. The 2.93 CHANGELOG says inotify
+  watches are now created after dnsmasq drops privileges, which affects which
+  user needs read access to the hosts directory.
+
+## History: dnsmasq before 2.88
+
+Until 2026-11-17 production ran Alpine Linux 3.12 and dnsmasq 2.85, and the
+probes branched on the
+dnsmasq version. This section records what older releases do, because it is
+why the probes and the service do not support them.
+
+dnsmasq 2.87 and earlier reread a changed hosts-directory file and add its
+entries, but never drop the entries the previous version of the file
+contributed. Only SIGHUP, which clears the cache and rereads every hosts
+file, removes them. On 2.85 that meant:
+
+- an update answered both the old and the new address until SIGHUP;
+- an emptied file's record was still served two seconds later, until SIGHUP;
+- `rm managed.hosts` logged nothing and the old records stayed served until
+  SIGHUP;
+- so the service would have had to send SIGHUP after every write and empty
+  the managed file rather than delete it.
+
+A manual shell run with `--log-queries` ruled out a harness bug on 2.85: the
+file held only the new line, both addresses were attributed to the hosts
+directory, and the doubled answer was still there three seconds later. A copy
+of the probes built to assert the 2.88-and-later behaviour on every version
+failed both hosts-directory probes on 2.85. The current probes assert that
+behaviour and, after the owner's minimum-version decision, the harness
+checks the version up front so an old dnsmasq gives one clear error instead
+of probe timeouts.
+
+The change came in 2.88, whose CHANGELOG says: "Make --hostsdir (but NOT
+--dhcp-hostsdir and --dhcp-optsdir) handle removal of whole files or entries
+within files." Both sides of it were tested:
 
 | dnsmasq | Source | Update (`.80` to `.81`, no SIGHUP) | Removal (file emptied, no SIGHUP) | How it was obtained |
 | --- | --- | --- | --- | --- |
@@ -75,85 +138,14 @@ until SIGHUP. On 2.91 the log shows the extra step as
 | 2.88 | Debian `2.88-1` from snapshot.debian.org, in `debian:bookworm` | `.81` only | wildcard `.17` | probes (static test binary) and a manual shell run |
 | 2.89 | Debian `2.89-1` from snapshot.debian.org, in `debian:bookworm` | `.81` only | wildcard `.17` | manual shell run |
 | 2.90 | `alpine:3.21` (also in `alpine:3.17` to `alpine:3.20`) | `.81` only | wildcard `.17` | probes (static test binary) and a manual shell run |
-| 2.91 | `alpine:3.22`; `ubuntu:24.04` `dnsmasq-base` `2.91-0ubuntu0.24.04.2`; `golang:1.27` (Debian) | `.81` only | wildcard `.17` | probes (`make integration` as a non-root user in `golang:1.27`, static test binary as a non-root user in `ubuntu:24.04`) and a manual shell run in `alpine:3.22` |
+| 2.91 | `alpine:3.23`, `alpine:3.22`; `ubuntu:24.04` `dnsmasq-base` `2.91-0ubuntu0.24.04.2`; `golang:1.27` (Debian) | `.81` only | wildcard `.17` | probes and a manual shell run |
 
-The boundary matches the dnsmasq 2.88 CHANGELOG entry: "Make --hostsdir
-(but NOT --dhcp-hostsdir and --dhcp-optsdir) handle removal of whole files
-or entries within files." Both sides of it, 2.87 and 2.88, were tested, so
-the 2.88 threshold in `hostsDirFlushes` is not an assumption. Versions older
-than 2.85 are assumed to behave like 2.85, and versions newer than 2.91 are
-assumed to behave like 2.91.
+2.88 and 2.90 behave like 2.91 in these probes; 2.89 was checked only by a
+manual shell run, with the same result. The minimum is nonetheless the
+version production runs, so the probes are only kept passing on 2.91 and
+later.
 
-## Option: upgrading dnsmasq on the DNS host
-
-The owner raised on 2026-11-17 that production dnsmasq could likely be
-upgraded to remove the version difference. This is an open decision for the
-owner and the service design, not a recommendation to act now; the live
-host has not been touched.
-
-Verified:
-
-- 2.88 is the first release that drops a changed or removed hosts file's old
-  records without SIGHUP (table above).
-- Of the Alpine images checked, `alpine:3.15` and `alpine:3.16` package
-  2.86, `alpine:3.17` to `alpine:3.21` package 2.90 and `alpine:3.22`
-  packages 2.91 (as of 2026-11-17). So Alpine 3.17 is the oldest Alpine
-  release whose current package has the newer behaviour.
-- On 2.88 and later the hosts-directory probes pass without a SIGHUP for
-  updates and removals, and deleting the managed file drops its records.
-
-What the service could drop if production ran 2.88 or later:
-
-- The SIGHUP after every write, and with it the need to know dnsmasq's PID or
-  have permission to signal it.
-- The rule to empty the managed file rather than delete it.
-
-What would still be needed:
-
-- inotify support in the dnsmasq build, which the hosts directory relies on
-  for every change (the Alpine 2.90 and 2.91 builds list `inotify`).
-- The dot-prefixed temporary file and rename, so dnsmasq never reads a
-  partial file.
-- Whatever the service does for changes outside the hosts directory, such as
-  edits to the main config; those were not probed.
-
-Not verified:
-
-- Whether a newer dnsmasq package can be installed on Alpine 3.12 without
-  upgrading the whole host, and what an Alpine upgrade from 3.12 would
-  change elsewhere on the host.
-- Whether Alpine 3.17's package was 2.88 or later when 3.17 was first
-  released; only today's package (2.90) was checked.
-- Behaviour of releases newer than 2.91. The 2.93 CHANGELOG says inotify
-  watches are now created after dnsmasq drops privileges, which affects which
-  user needs read access to the hosts directory.
-
-## How the changed probes were checked
-
-### On 2.85
-
-The update probe failed with `last answer [10.0.0.80 10.0.0.81]`. To rule out
-a harness bug, the same steps were repeated by hand in the probe image with a
-shell script (`mv` of a temporary file, then an in-place overwrite) and
-`--log-queries`:
-
-- the file held only the new line (`10.0.0.81 app.home.example.test`);
-- dnsmasq logged `read .../managed.hosts - 1 addresses` for each write, then
-  answered the query with both addresses, each attributed to the hosts
-  directory rather than the cache of an upstream answer;
-- the doubled answer was still there three seconds later, so it is not a
-  timing effect;
-- after SIGHUP dnsmasq logged `cleared cache`, reread the file and answered
-  only the new address.
-
-### On 2.88 and later
-
-The update and removal probes failed on 2.91 (`last answer [10.0.0.81]`, and
-`before reload = [10.0.0.17]`). The dnsmasq log in the failure output shows
-`inotify: flushed 1 names read from .../managed.hosts` before each reread,
-a line 2.85 never prints. The same shell script as above, run outside the Go
-harness in each image in the table, gave the results in the table. On 2.91
-its query log attributes `.81` to `managed.hosts` and, after the file is
-emptied or deleted, `.17` to the config wildcard. A copy of the probes built to take the 2.88 branch on every
-version failed both probes on 2.85, so each branch asserts something the
-other version does not do.
+The two hosts-directory probes were renamed as the findings changed:
+`TestHostsDirUpdateDropsOldAddress` was first `TestHostsDirUpdateWithoutReload`,
+then `TestHostsDirUpdateKeepsOldAddressUntilReload`, and
+`TestHostsDirRemovalDropsRecord` was first `TestHostsDirRemovalNeedsReload`.

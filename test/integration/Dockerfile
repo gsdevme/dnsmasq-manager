@@ -6,11 +6,12 @@ WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 go test -c -tags integration -o /out/integration.test ./test/integration/
 
-# Alpine 3.12 matches the production host and packages dnsmasq 2.85.
-FROM alpine:3.12
+# Alpine 3.23 is the release production runs and packages dnsmasq 2.91;
+# both are the minimums the service supports.
+FROM alpine:3.23
 RUN apk add --no-cache dnsmasq bind-tools
 # Fail the build rather than probe a dnsmasq the production host does not run.
-RUN dnsmasq --version | grep -q 'version 2.85'
+RUN dnsmasq --version | grep -q 'version 2.91'
 COPY --from=build /out/integration.test /src/test/integration/
 COPY testdata/ /src/testdata/
 WORKDIR /src/test/integration
