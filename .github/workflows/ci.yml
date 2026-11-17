@@ -1,0 +1,99 @@
+# Continuous integration for dnsmasq-manager.
+#
+# Every step calls a Makefile target, so CI runs exactly what a developer or
+# the cloud session-start hook runs locally. When a check changes, change the
+# Makefile, not this file.
+name: CI
+
+on:
+  # Every commit that lands on main is checked.
+  push:
+    branches: [main]
+  # Pull requests from any branch, including forks, are checked before merge.
+  pull_request:
+
+# Least privilege: the jobs only read the repository. Nothing here pushes,
+# comments, publishes or uploads.
+permissions:
+  contents: read
+
+# One run per ref at a time. A new push to the same branch or PR cancels the
+# run it supersedes, so only the latest commit spends runner minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Static analysis plus the fast tests: Go unit tests (with the race
+  # detector) and the session-start hook tests, which run against stub
+  # commands and need only bash.
+  lint-and-unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # go-version-file reads the `go` directive in go.mod, so CI follows the
+      # module's Go version without a second copy of it here. setup-go also
+      # puts the Go bin directory on PATH ahead of any preinstalled tools.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # Installs the golangci-lint version pinned in the Makefile into the Go
+      # bin directory. `make lint` resolves golangci-lint from PATH first, and
+      # setup-go put that directory on PATH, so lint uses the pinned copy.
+      - run: make tools
+      - run: make lint
+      # `go test -race` needs cgo and a C compiler; gcc ships on the runner.
+      - run: make test
+      - run: make test-hook
+
+  # Integration probes against Ubuntu's packaged dnsmasq, run directly on the
+  # runner. This catches behaviour that differs from the pinned Alpine
+  # build below and exercises `make integration` as a developer on Linux
+  # would run it.
+  integration-ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # The probes are Go tests built with the integration tag, so they need
+      # the toolchain.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # dnsmasq-base provides the dnsmasq binary without the dnsmasq package's
+      # system service, which would try to bind port 53 and clash with
+      # systemd-resolved. The tests start their own dnsmasq on a free port.
+      # dnsutils provides dig, which the tests query with.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dnsmasq-base dnsutils
+      - run: make integration
+
+  # Integration probes in Alpine against dnsmasq 2.85, the version the
+  # production host runs. The Dockerfile builds the test binary in a Go image
+  # and asserts the dnsmasq version, so the job needs only Docker, which is
+  # preinstalled on the runner; no Go setup is required.
+  integration-alpine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: make integration-docker
+
+  # Builds the release binary for the DNS host and checks it is statically
+  # linked, so it runs on the Alpine host whatever C library it was built
+  # against.
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make build
+      # `make build` sets CGO_ENABLED=0. Fail the job if the binary is ever
+      # dynamically linked, for example because that setting was lost.
+      - name: Check the binary is statically linked
+        run: |
+          out=$(file bin/dnsmasq-manager)
+          echo "$out"
+          if ! grep -q 'statically linked' <<<"$out"; then
+            echo "::error file=Makefile::bin/dnsmasq-manager is not statically linked"
+            exit 1
+          fi
