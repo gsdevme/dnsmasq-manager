@@ -15,7 +15,7 @@ GO_BIN_DIR := $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 # so lint works in shells where the Go bin directory is not on PATH.
 GOLANGCI_LINT ?= $(or $(shell command -v golangci-lint 2>/dev/null),$(GO_BIN_DIR)/golangci-lint)
 
-.PHONY: build test lint tools
+.PHONY: build test lint tools integration integration-docker
 
 # Static linux/amd64 binary for the DNS host; CGO off keeps it statically linked.
 build:
@@ -29,3 +29,15 @@ lint:
 
 tools:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+# Probes a real dnsmasq with the mock config in testdata/dnsmasq. Needs Linux
+# with dnsmasq and dig on PATH; elsewhere use integration-docker.
+integration:
+	@if [ "$$(uname -s)" != "Linux" ]; then echo "integration tests need Linux; run 'make integration-docker'" >&2; exit 1; fi
+	@command -v dnsmasq >/dev/null 2>&1 || { echo "dnsmasq is not on PATH; install it or run 'make integration-docker'" >&2; exit 1; }
+	@command -v dig >/dev/null 2>&1 || { echo "dig is not on PATH; install it (bind-tools or dnsutils) or run 'make integration-docker'" >&2; exit 1; }
+	go test -tags integration -count=1 -v ./test/integration/
+
+# Runs the integration probes in Alpine against the production dnsmasq version.
+integration-docker:
+	docker build -f test/integration/Dockerfile -t dnsmasq-manager-integration . && docker run --rm dnsmasq-manager-integration
