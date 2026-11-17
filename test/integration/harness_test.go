@@ -4,7 +4,8 @@
 // testdata/dnsmasq and queries it with dig, so tests observe how dnsmasq
 // itself behaves rather than how we assume it behaves.
 //
-// The tests need Linux with dnsmasq and dig on the path. Run them with
+// The tests need Linux with dnsmasq 2.91 or later and dig on the path;
+// startDnsmasq fails a test at once on an older dnsmasq. Run them with
 // `make integration` on such a host, or `make integration-docker` elsewhere,
 // which pins the dnsmasq version the production host runs.
 package integration
@@ -31,6 +32,7 @@ const (
 	readyName    = "nas.home.example.test"
 	pollInterval = 100 * time.Millisecond
 	pollTimeout  = 5 * time.Second
+	reloadSettle = time.Second
 )
 
 // server is a dnsmasq process started by startDnsmasq. It listens on
@@ -45,7 +47,8 @@ type server struct {
 // startDnsmasq starts dnsmasq in the foreground with the mock config, an
 // empty per-test hosts directory and a free port on 127.0.0.1, and returns
 // once it answers queries. It fails the test when dnsmasq or dig is not on
-// the path or dnsmasq does not answer within five seconds. The process is
+// the path, when dnsmasq is older than minVersion or its version cannot be
+// parsed, or when dnsmasq does not answer within five seconds. The process is
 // killed in t.Cleanup, which also logs its output if the test failed.
 func startDnsmasq(t *testing.T) *server {
 	t.Helper()
@@ -54,7 +57,11 @@ func startDnsmasq(t *testing.T) *server {
 			t.Fatalf("%s is not on the path: %v", bin, err)
 		}
 	}
-	t.Log(dnsmasqVersion(t))
+	version := dnsmasqVersion(t)
+	t.Log(version)
+	if err := checkMinVersion(version); err != nil {
+		t.Fatal(err)
+	}
 
 	conf, err := filepath.Abs(mockConfig)
 	if err != nil {
@@ -114,7 +121,7 @@ func freePort(t *testing.T) int {
 }
 
 // dnsmasqVersion returns the first line of `dnsmasq --version`, for example
-// "Dnsmasq version 2.85  Copyright (c) 2000-2021 Simon Kelley".
+// "Dnsmasq version 2.91  Copyright (c) 2000-2025 Simon Kelley".
 func dnsmasqVersion(t *testing.T) string {
 	t.Helper()
 	out, err := exec.Command("dnsmasq", "--version").Output()
@@ -125,56 +132,36 @@ func dnsmasqVersion(t *testing.T) string {
 	return strings.TrimSpace(line)
 }
 
-// hostsDirFlushRelease is the first dnsmasq release, as {major, minor}, that
-// drops the records a hosts-directory file contributed when that file is
-// changed or removed. See hostsDirFlushes.
-var hostsDirFlushRelease = [2]int{2, 88}
+// minVersion is the oldest dnsmasq release, as {major, minor}, that the
+// service supports and the probes accept. See checkMinVersion.
+var minVersion = [2]int{2, 91}
 
-// hostsDirFlushes reports whether the dnsmasq that printed versionLine (the
-// first line of `dnsmasq --version`) drops the records a hosts-directory file
-// contributed when inotify sees the file change or disappear, so updates and
-// removals take effect without SIGHUP. Older releases only add records on
-// change and keep the old ones until SIGHUP.
-//
-// Verified by running the probes or the same steps by hand: 2.85, 2.86 and
-// 2.87 keep the old records; 2.88, 2.89, 2.90 and 2.91 drop them. That
-// matches the 2.88 CHANGELOG entry "Make --hostsdir ... handle removal of
-// whole files or entries within files", so there is no unverified gap
-// between the two. Releases older than 2.85 are assumed to keep old records,
-// and releases newer than 2.91 are assumed to drop them.
-//
-// It returns an error when versionLine does not contain a version of the form
-// "version <major>.<minor>", optionally followed by a suffix such as "rc1".
-func hostsDirFlushes(versionLine string) (bool, error) {
+// checkMinVersion returns nil when versionLine, the first line of
+// `dnsmasq --version`, names a release at or above minVersion. It compares
+// "version <major>.<minor>" numerically, so 2.100 is newer than 2.91, and
+// ignores any suffix after the minor number, such as "rc1". It returns an
+// error naming the minimum and what was found when the release is older or
+// the version cannot be parsed.
+func checkMinVersion(versionLine string) error {
+	want := fmt.Sprintf("%d.%d", minVersion[0], minVersion[1])
 	_, rest, ok := strings.Cut(versionLine, "version ")
 	if !ok {
-		return false, fmt.Errorf("no version in %q", versionLine)
+		return fmt.Errorf("dnsmasq %s or later is required, found no version in %q", want, versionLine)
 	}
 	majorText, rest, ok := strings.Cut(rest, ".")
 	if !ok {
-		return false, fmt.Errorf("no minor version in %q", versionLine)
+		return fmt.Errorf("dnsmasq %s or later is required, found no minor version in %q", want, versionLine)
 	}
 	minorText := rest[:len(rest)-len(strings.TrimLeft(rest, "0123456789"))]
 	major, majorErr := strconv.Atoi(majorText)
 	minor, minorErr := strconv.Atoi(minorText)
 	if err := errors.Join(majorErr, minorErr); err != nil {
-		return false, fmt.Errorf("parse version in %q: %w", versionLine, err)
+		return fmt.Errorf("dnsmasq %s or later is required, cannot parse the version in %q: %w", want, versionLine, err)
 	}
-	return major > hostsDirFlushRelease[0] ||
-		major == hostsDirFlushRelease[0] && minor >= hostsDirFlushRelease[1], nil
-}
-
-// wantHostsDirFlush reports whether the dnsmasq on the path drops a changed or
-// removed hosts-directory file's old records without SIGHUP, as decided by
-// hostsDirFlushes from its version. It fails the test when the version cannot
-// be parsed.
-func wantHostsDirFlush(t *testing.T) bool {
-	t.Helper()
-	flushes, err := hostsDirFlushes(dnsmasqVersion(t))
-	if err != nil {
-		t.Fatal(err)
+	if slices.Compare([]int{major, minor}, minVersion[:]) < 0 {
+		return fmt.Errorf("dnsmasq %s or later is required, found %d.%d (%q)", want, major, minor, versionLine)
 	}
-	return flushes
+	return nil
 }
 
 // query asks the server for name's A records with a single one-second dig
@@ -232,6 +219,20 @@ func (s *server) reload(t *testing.T) {
 	t.Helper()
 	if err := s.cmd.Process.Signal(syscall.SIGHUP); err != nil {
 		t.Fatalf("send SIGHUP to dnsmasq: %v", err)
+	}
+}
+
+// reloadKeeps sends dnsmasq SIGHUP, waits reloadSettle for dnsmasq to handle
+// it, then queries name once and fails the test unless the answer is exactly
+// want, in any order. Use it after the answer already equals want, to show
+// that SIGHUP does not change it.
+func (s *server) reloadKeeps(t *testing.T, name string, want ...string) {
+	t.Helper()
+	want = slices.Sorted(slices.Values(want))
+	s.reload(t)
+	time.Sleep(reloadSettle)
+	if got := s.lookup(t, name); !slices.Equal(got, want) {
+		t.Fatalf("%s: answer changed after SIGHUP: got %v, want %v", name, got, want)
 	}
 }
 

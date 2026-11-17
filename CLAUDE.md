@@ -10,7 +10,7 @@ The service requirements are in `docs/requirements/dnsmasq-api.md`; start any se
 Every change to the service goes through these steps, in order:
 
 1. Requirements: `docs/requirements/dnsmasq-api.md`, read with `docs/dnsmasq-findings.md`
-   (what dnsmasq 2.85 was observed to do, and how 2.88 and later differ).
+   (what dnsmasq 2.91, the production and minimum version, was observed to do).
 2. A design doc in `docs/superpowers/specs/`, named `YYYY-MM-DD-<topic>-design.md`.
 3. A plan in `docs/superpowers/plans/`, named `YYYY-MM-DD-<topic>.md`.
 4. Test-driven implementation: a failing test first, then the code that makes it pass.
@@ -29,11 +29,12 @@ same steps by hand.
 - `make test-hook`: tests the session-start hook against stub commands; needs only bash.
 - `make integration`: probes a real dnsmasq with `dig`. Needs Linux with `dnsmasq` and
   `dig` on PATH. Use it in cloud sessions and CI.
-- `make integration-docker`: the same probes in an Alpine image pinned to dnsmasq 2.85.
-  Use it on the Mac, and whenever the result must match production dnsmasq 2.85.
+- `make integration-docker`: the same probes in `alpine:3.23`, pinned to dnsmasq 2.91.
+  Use it on the Mac, and whenever the result must match production dnsmasq 2.91.
 
 ## Rules
 
+- Minimums are Alpine 3.23 and dnsmasq 2.91; do not add code or probes for older ones.
 - Standard library first. A new third-party dependency needs a stated reason in the
   design doc that introduces it.
 - Verify locally before pushing: run the make targets that cover the change.

@@ -13,7 +13,7 @@ Go module: `github.com/gsdevme/dnsmasq-manager`.
 Foundation only. There is no service yet: the binary prints its version and
 exits. What exists today:
 
-- the service requirements, corrected against the DNS host, dnsmasq 2.85 and
+- the service requirements, corrected against the DNS host, dnsmasq 2.91 and
   external-dns v0.24.0;
 - a Go skeleton (`cmd/dnsmasq-manager`, `internal/version`) with no
   third-party dependencies;
@@ -29,7 +29,7 @@ service itself starts with its own design doc, written from the requirements.
 
 Needs Go 1.27 (from `go.mod`). Lint needs golangci-lint at the version pinned
 in the `Makefile`; `make tools` installs it with `go install`. The integration
-probes need either Linux with `dnsmasq` and `dig`, or Docker.
+probes need either Linux with `dnsmasq` 2.91 or later and `dig`, or Docker.
 
 | Target | What it does |
 | --- | --- |
@@ -38,8 +38,8 @@ probes need either Linux with `dnsmasq` and `dig`, or Docker.
 | `make lint` | `golangci-lint run ./...` |
 | `make tools` | Installs the pinned golangci-lint |
 | `make test-hook` | Tests the session-start hook against stub commands; needs only bash |
-| `make integration` | Integration probes against a real `dnsmasq`; Linux only, with `dnsmasq` and `dig` on PATH |
-| `make integration-docker` | The same probes in an Alpine image pinned to dnsmasq 2.85, the production version; use this on macOS |
+| `make integration` | Integration probes against a real `dnsmasq`; Linux only, with `dnsmasq` 2.91 or later and `dig` on PATH |
+| `make integration-docker` | The same probes in `alpine:3.23` with dnsmasq 2.91, the production release and version and the supported minimums; use this on macOS |
 
 ## Claude Code sessions
 
@@ -77,7 +77,8 @@ superpowers is loaded, follow the workflow in `CLAUDE.md` by hand.
 - [Service requirements](docs/requirements/dnsmasq-api.md): the input to the
   service design.
 - [dnsmasq findings](docs/dnsmasq-findings.md): what the probes observed on
-  dnsmasq 2.85, and how 2.88 and later differ.
+  dnsmasq 2.91, the minimum supported version, and why older ones are not
+  supported.
 - [Cloud session findings](docs/cloud-session-findings.md): the cloud test
   checklist, not yet answered.
 - [Foundation design](docs/superpowers/specs/2026-11-17-agentic-repo-foundation-design.md)
