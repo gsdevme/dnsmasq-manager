@@ -1,0 +1,90 @@
+# Releases for dnsmasq-manager.
+#
+# release-please reads the Conventional Commits on main and keeps a release
+# pull request open with the next version and the changelog. Merging that pull
+# request tags the version and creates the GitHub release; the assets job then
+# builds the release files with `make dist` and uploads them.
+#
+# The version rules live in release-please-config.json. The release pull
+# request is titled "build: release <version>" there, because the default
+# title uses a commit type this repository does not allow.
+name: Release
+
+on:
+  # Every commit that lands on main either updates the release pull request
+  # or, when the commit is the merged release pull request, cuts the release.
+  push:
+    branches: [main]
+
+# Nothing by default. Each job below asks for exactly what it needs.
+permissions: {}
+
+# One release run at a time, and never cancel one part way: a cancelled run
+# could leave a release without its assets.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Opens or updates the release pull request, and creates the tag and the
+  # GitHub release when that pull request has been merged.
+  release-please:
+    runs-on: ubuntu-24.04
+    permissions:
+      # Push the release branch, the tag and the GitHub release.
+      contents: write
+      # Open and update the release pull request.
+      pull-requests: write
+      # Create and apply the "autorelease" labels, which go through the
+      # issues API.
+      issues: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # A third-party action holding a write token, so it is pinned to a
+      # commit rather than a tag that can be moved. Update the SHA and the
+      # version comment together.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Builds the release files from the tagged commit and attaches them to the
+  # release: the binary, its SHA-256 checksum and install.sh.
+  #
+  # This job is in the release workflow, not one triggered by the release
+  # event, because a release created with GITHUB_TOKEN starts no other
+  # workflow.
+  #
+  # Known gap: between the release being created above and this job
+  # finishing, the latest release has no assets, so an install in that window
+  # fails at download and changes nothing.
+  assets:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      # Upload assets to the release.
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Build exactly what was tagged, not whatever main has moved to.
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          # This job holds a write token, so it does not restore a cache that
+          # other runs could have written.
+          cache: false
+      - name: Build and upload release assets
+        env:
+          # Passed through the environment so the tag is never expanded
+          # inside the script text.
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          make dist VERSION="$TAG"
+          gh release upload "$TAG" dist/* --clobber
