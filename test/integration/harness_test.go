@@ -125,6 +125,58 @@ func dnsmasqVersion(t *testing.T) string {
 	return strings.TrimSpace(line)
 }
 
+// hostsDirFlushRelease is the first dnsmasq release, as {major, minor}, that
+// drops the records a hosts-directory file contributed when that file is
+// changed or removed. See hostsDirFlushes.
+var hostsDirFlushRelease = [2]int{2, 88}
+
+// hostsDirFlushes reports whether the dnsmasq that printed versionLine (the
+// first line of `dnsmasq --version`) drops the records a hosts-directory file
+// contributed when inotify sees the file change or disappear, so updates and
+// removals take effect without SIGHUP. Older releases only add records on
+// change and keep the old ones until SIGHUP.
+//
+// Verified by running the probes or the same steps by hand: 2.85, 2.86 and
+// 2.87 keep the old records; 2.88, 2.89, 2.90 and 2.91 drop them. That
+// matches the 2.88 CHANGELOG entry "Make --hostsdir ... handle removal of
+// whole files or entries within files", so there is no unverified gap
+// between the two. Releases older than 2.85 are assumed to keep old records,
+// and releases newer than 2.91 are assumed to drop them.
+//
+// It returns an error when versionLine does not contain a version of the form
+// "version <major>.<minor>", optionally followed by a suffix such as "rc1".
+func hostsDirFlushes(versionLine string) (bool, error) {
+	_, rest, ok := strings.Cut(versionLine, "version ")
+	if !ok {
+		return false, fmt.Errorf("no version in %q", versionLine)
+	}
+	majorText, rest, ok := strings.Cut(rest, ".")
+	if !ok {
+		return false, fmt.Errorf("no minor version in %q", versionLine)
+	}
+	minorText := rest[:len(rest)-len(strings.TrimLeft(rest, "0123456789"))]
+	major, majorErr := strconv.Atoi(majorText)
+	minor, minorErr := strconv.Atoi(minorText)
+	if err := errors.Join(majorErr, minorErr); err != nil {
+		return false, fmt.Errorf("parse version in %q: %w", versionLine, err)
+	}
+	return major > hostsDirFlushRelease[0] ||
+		major == hostsDirFlushRelease[0] && minor >= hostsDirFlushRelease[1], nil
+}
+
+// wantHostsDirFlush reports whether the dnsmasq on the path drops a changed or
+// removed hosts-directory file's old records without SIGHUP, as decided by
+// hostsDirFlushes from its version. It fails the test when the version cannot
+// be parsed.
+func wantHostsDirFlush(t *testing.T) bool {
+	t.Helper()
+	flushes, err := hostsDirFlushes(dnsmasqVersion(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return flushes
+}
+
 // query asks the server for name's A records with a single one-second dig
 // attempt and returns the answers sorted. A query that gets no reply is an
 // error, as is any other dig failure.

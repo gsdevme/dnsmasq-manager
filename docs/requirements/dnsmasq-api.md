@@ -36,19 +36,23 @@ throughout; the real zone is supplied as config.
   updates are file writes only; the probes on 2.85 found:
   - an added record is served without a signal;
   - removing a record from the file leaves it served until dnsmasq gets
-    SIGHUP (`TestHostsDirRemovalNeedsReload`);
+    SIGHUP, while dnsmasq 2.88 and later drop it without one
+    (`TestHostsDirRemovalDropsRecord`);
   - updating a record's address adds the new address but keeps the old one,
     so the name answers with both until SIGHUP, after which only the new
-    address is served (`TestHostsDirUpdateKeepsOldAddressUntilReload`);
+    address is served; dnsmasq 2.88 and later serve only the new address
+    without a signal (`TestHostsDirUpdateDropsOldAddress`);
   - deleting the managed file is not acted on either: the old records stay
     served until SIGHUP, so the service should empty the file rather than
-    delete it;
+    delete it (2.88 and later drop a deleted file's records);
   - dnsmasq ignores dotfiles in the hosts directory, so writing a
     dot-prefixed temporary file and renaming it over the managed file never
     exposes a partial file.
 
   The simplest correct rule is to send SIGHUP after every write of the
-  managed file. Details are in [`docs/dnsmasq-findings.md`](../dnsmasq-findings.md).
+  managed file; it is also correct and harmless on 2.88 and later, which
+  the service's own tests run against in CI. Details are in
+  [`docs/dnsmasq-findings.md`](../dnsmasq-findings.md).
 
 ## Added by the owner
 
@@ -58,6 +62,10 @@ throughout; the real zone is supplied as config.
 - The aim is to retire the `lan-dns` repo. The service takes over what that
   repo does today, and the few hand-written rules that are still wanted move
   into the service's own config file.
+- Upgrading dnsmasq on the DNS host is an open option the owner raised on
+  2026-11-17, to remove the 2.85 reload requirement for updates and
+  removals. Not decided; see
+  [Option: upgrading dnsmasq on the DNS host](../dnsmasq-findings.md#option-upgrading-dnsmasq-on-the-dns-host).
 - Standard library first. The service is expected to be built on `net/http`,
   `log/slog`, `html/template`, `encoding/json` and `testing`. Any third-party
   dependency needs a stated reason in the design doc that introduces it.

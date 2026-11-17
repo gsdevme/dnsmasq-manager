@@ -10,7 +10,7 @@ The service requirements are in `docs/requirements/dnsmasq-api.md`; start any se
 Every change to the service goes through these steps, in order:
 
 1. Requirements: `docs/requirements/dnsmasq-api.md`, read with `docs/dnsmasq-findings.md`
-   (what dnsmasq 2.85 was observed to do).
+   (what dnsmasq 2.85 was observed to do, and how 2.88 and later differ).
 2. A design doc in `docs/superpowers/specs/`, named `YYYY-MM-DD-<topic>-design.md`.
 3. A plan in `docs/superpowers/plans/`, named `YYYY-MM-DD-<topic>.md`.
 4. Test-driven implementation: a failing test first, then the code that makes it pass.

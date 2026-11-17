@@ -77,7 +77,7 @@ superpowers is loaded, follow the workflow in `CLAUDE.md` by hand.
 - [Service requirements](docs/requirements/dnsmasq-api.md): the input to the
   service design.
 - [dnsmasq findings](docs/dnsmasq-findings.md): what the probes observed on
-  dnsmasq 2.85.
+  dnsmasq 2.85, and how 2.88 and later differ.
 - [Cloud session findings](docs/cloud-session-findings.md): the cloud test
   checklist, not yet answered.
 - [Foundation design](docs/superpowers/specs/2026-11-17-agentic-repo-foundation-design.md)
