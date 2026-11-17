@@ -24,9 +24,15 @@ same steps by hand.
 ## Commands
 
 - `make build`: static `linux/amd64` binary at `bin/dnsmasq-manager`, for the DNS host.
+- `make dist`: the release files in `dist/` (binary, `.sha256` checksum, `install.sh`);
+  `VERSION=v0.1.0` stamps the version.
 - `make test`: unit tests with `-race`.
 - `make lint`: golangci-lint at the version pinned in the Makefile (`make tools` installs it).
 - `make test-hook`: tests the session-start hook against stub commands; needs only bash.
+- `make test-install`: tests `install.sh` against stub commands. Needs bash, and dash as
+  the default `TEST_SH`.
+- `make test-install-docker`: runs `install.sh` end to end in `alpine:3.23` against the
+  real binary, then the stub tests under BusyBox ash. Needs Docker.
 - `make integration`: probes a real dnsmasq with `dig`. Needs Linux with `dnsmasq` and
   `dig` on PATH. Use it in cloud sessions and CI.
 - `make integration-docker`: the same probes in `alpine:3.23`, pinned to dnsmasq 2.91.
