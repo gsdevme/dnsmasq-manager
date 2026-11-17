@@ -21,6 +21,21 @@ writing-plans, test-driven-development, requesting-code-review). When it is not 
 for example in a cloud session where the hook has only just installed it, follow the
 same steps by hand.
 
+## Issues
+
+The roadmap is in GitHub issues: an epic and one issue per phase, each with a task list
+and exit criteria.
+
+- Work for an issue goes on a branch named `<type>/<issue>-<slug>`, for example
+  `feat/4-serve`. Where the name cannot be chosen, as in a cloud session, run
+  `bash .claude/hooks/pm-issue.sh link <issue>` once on the branch.
+- The pull request body carries `Closes #<issue>`. Nothing else closes an issue.
+- Hooks give the session the linked issue when work starts. After a push they ask the
+  session to dispatch the `project-manager` agent, which ticks the checklist items the
+  commits complete and updates the branch's progress comment. Dispatch it when asked;
+  do not tick items or write progress comments by hand.
+- Only pushed commits count as progress.
+
 ## Commands
 
 - `make build`: static `linux/amd64` binary at `bin/dnsmasq-manager`, for the DNS host.
@@ -28,7 +43,8 @@ same steps by hand.
   `VERSION=v0.1.0` stamps the version.
 - `make test`: unit tests with `-race`.
 - `make lint`: golangci-lint at the version pinned in the Makefile (`make tools` installs it).
-- `make test-hook`: tests the session-start hook against stub commands; needs only bash.
+- `make test-hook`: tests the Claude Code hooks (session start and project manager)
+  against stub commands; needs only bash.
 - `make test-install`: tests `install.sh` against stub commands. Needs bash, and dash as
   the default `TEST_SH`.
 - `make test-install-docker`: runs `install.sh` end to end in `alpine:3.23` against the
