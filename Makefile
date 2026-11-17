@@ -15,7 +15,7 @@ GO_BIN_DIR := $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 # so lint works in shells where the Go bin directory is not on PATH.
 GOLANGCI_LINT ?= $(or $(shell command -v golangci-lint 2>/dev/null),$(GO_BIN_DIR)/golangci-lint)
 
-.PHONY: build test lint tools integration integration-docker
+.PHONY: build test test-hook lint tools integration integration-docker
 
 # Static linux/amd64 binary for the DNS host; CGO off keeps it statically linked.
 build:
@@ -23,6 +23,10 @@ build:
 
 test:
 	go test -race ./...
+
+# Runs the session-start hook against stub commands; needs only bash.
+test-hook:
+	bash test/hook/hook_test.sh
 
 lint:
 	$(GOLANGCI_LINT) run ./...
