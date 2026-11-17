@@ -34,9 +34,10 @@ dist: build
 test:
 	go test -race ./...
 
-# Runs the session-start hook against stub commands; needs only bash.
+# Runs the Claude Code hooks against stub commands; needs only bash.
 test-hook:
 	bash test/hook/hook_test.sh
+	bash test/hook/pm_test.sh
 
 # Runs install.sh against stub commands. Needs bash for the harness and the
 # shell in TEST_SH (default /bin/dash) to run the installer.
