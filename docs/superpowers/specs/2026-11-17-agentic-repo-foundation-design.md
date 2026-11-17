@@ -86,7 +86,7 @@ Not confirmed by the docs, to be settled by the cloud test below:
 
 From the DNS host (read-only inspection, 2026-11-17):
 
-- One server only: hostname `dns01`, Alpine Linux 3.12, x86_64, OpenRC (no
+- One server only: Alpine Linux 3.12, x86_64, OpenRC (no
   systemd). dnsmasq 2.85 with inotify compiled in, DNS only.
 - Its config is a symlink into a checkout of the `lan-dns` git repo. The
   config contains wildcard `address=` entries that will coexist with the new

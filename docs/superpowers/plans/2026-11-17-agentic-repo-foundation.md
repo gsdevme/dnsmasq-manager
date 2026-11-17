@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-17-agentic-repo-foundation-design.md` (approved by Gavin 2026-11-17).
 
-**Context:** The repo at `/Users/gavin/Sites/dnsmasq-manager` has no commits and no remote. This plan is the first of two projects. The service itself (REST API, external-dns webhook, read-only web page on port 80, replacing `lan-dns`) gets its own design and plan after this lands.
+**Context:** The repo has no commits and no remote. This plan is the first of two projects. The service itself (REST API, external-dns webhook, read-only web page on port 80, replacing `lan-dns`) gets its own design and plan after this lands.
 
 **Execution:** Subagent-driven, per Gavin's delegation rules: one opus worker per task, sonnet workers for plain test and lint runs, the session model only orchestrates and reviews. Tasks 1 to 5 run in order because each builds on the Makefile from Task 1.
 
@@ -126,7 +126,7 @@ server=192.0.2.2
 address=/.zip/127.0.0.1
 address=/.mov/127.0.0.1
 address=/nas.home.example.test/10.0.0.40
-address=/dns01.lan/10.0.0.51
+address=/resolver.lan/10.0.0.51
 address=/mysql/10.0.0.90
 address=/mysql.lan/10.0.0.90
 address=/.home.example.test/10.0.0.17
