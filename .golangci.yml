@@ -1,0 +1,20 @@
+# golangci-lint v2 configuration. The version is pinned by
+# GOLANGCI_LINT_VERSION in the Makefile; install it with `make tools`.
+version: "2"
+
+linters:
+  # "standard" enables errcheck, govet, ineffassign, staticcheck and unused.
+  default: standard
+  enable:
+    # Flags error comparisons and type assertions that break on wrapped errors.
+    - errorlint
+    # Broad style, performance and bug-pattern checks.
+    - gocritic
+    # Catches commonly misspelled English words in comments and strings.
+    - misspell
+    # Go style rules, including doc comments on exported identifiers.
+    - revive
+
+formatters:
+  enable:
+    - gofmt
