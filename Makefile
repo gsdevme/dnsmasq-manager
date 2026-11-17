@@ -9,7 +9,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GOLANGCI_LINT_VERSION := v2.15.0
 
 # Directory `go install` writes to: GOBIN when set, otherwise GOPATH/bin.
-GO_BIN_DIR := $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
+GO_BIN_DIR = $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 
 # Prefer golangci-lint on PATH; otherwise use the copy `make tools` installed,
 # so lint works in shells where the Go bin directory is not on PATH.

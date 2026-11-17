@@ -17,11 +17,13 @@ on:
 permissions:
   contents: read
 
-# One run per ref at a time. A new push to the same branch or PR cancels the
-# run it supersedes, so only the latest commit spends runner minutes.
+# One run per ref at a time. A new push to the same pull request cancels the
+# run it supersedes, so only the latest commit spends runner minutes. Pushes to
+# main are never cancelled, so every commit that lands on main gets a complete
+# run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Static analysis plus the fast tests: Go unit tests (with the race
@@ -37,6 +39,10 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          # The module has no dependencies, so there is no go.sum; the default
+          # cache step would only warn "dependencies file is not found" on
+          # every run.
+          cache: false
       # Installs the golangci-lint version pinned in the Makefile into the Go
       # bin directory. `make lint` resolves golangci-lint from PATH first, and
       # setup-go put that directory on PATH, so lint uses the pinned copy.
@@ -59,6 +65,10 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          # The module has no dependencies, so there is no go.sum; the default
+          # cache step would only warn "dependencies file is not found" on
+          # every run.
+          cache: false
       # dnsmasq-base provides the dnsmasq binary without the dnsmasq package's
       # system service, which would try to bind port 53 and clash with
       # systemd-resolved. The tests start their own dnsmasq on a free port.
@@ -86,6 +96,10 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          # The module has no dependencies, so there is no go.sum; the default
+          # cache step would only warn "dependencies file is not found" on
+          # every run.
+          cache: false
       - run: make build
       # `make build` sets CGO_ENABLED=0. Fail the job if the binary is ever
       # dynamically linked, for example because that setting was lost.

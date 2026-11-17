@@ -2,6 +2,11 @@
 # GOLANGCI_LINT_VERSION in the Makefile; install it with `make tools`.
 version: "2"
 
+run:
+  # The integration-tagged test files are linted too.
+  build-tags:
+    - integration
+
 linters:
   # "standard" enables errcheck, govet, ineffassign, staticcheck and unused.
   default: standard
