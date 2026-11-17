@@ -294,7 +294,7 @@ and exit 1, unless:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DNSMASQ_MANAGER_VERSION` | `latest` | `latest`, or a version; `0.1.0` is normalised to `v0.1.0`. Anything other than `latest` or `v` followed by digits, letters, dots and hyphens is refused. |
+| `DNSMASQ_MANAGER_VERSION` | `latest` | `latest`, or a version; `0.1.0` is normalised to `v0.1.0`. Anything other than `latest` or `v` and a digit followed by digits, letters, dots and hyphens is refused. |
 | `DNSMASQ_MANAGER_BASE_URL` | `https://github.com/gsdevme/dnsmasq-manager/releases` | Release base URL; tests point it at a local server or stub. |
 | `DNSMASQ_MANAGER_INSTALL_DIR` | `/usr/local/bin` | Where the binary goes. |
 | `DNSMASQ_MANAGER_OS_RELEASE` | `/etc/os-release` | Test seam for the OS check. |
@@ -303,19 +303,24 @@ Download URLs are `$BASE_URL/latest/download/<asset>` for `latest` and
 `$BASE_URL/download/<tag>/<asset>` otherwise, the paths GitHub serves.
 
 **Download and verify.** A `mktemp -d` work directory, removed by an `EXIT`
-trap. BusyBox `wget -q -T 30 -O` fetches the binary and the `.sha256` file
-into it. The checksum file must be exactly one line matching
+trap. `HUP`, `INT` and `TERM` are trapped as well and exit with 128+N,
+because dash skips the `EXIT` trap when an untrapped signal kills it. BusyBox `wget -q -T 30 -O` fetches the binary and the `.sha256` file
+into it. The checksum file must be exactly one line (counted with
+`grep -c ''`, so an unterminated last line counts) matching
 `^[0-9a-f]{64}  dnsmasq-manager-linux-amd64$`; anything else is refused
 before `sha256sum` runs, so a stray HTML error page or a second file name
 cannot pass. Then `sha256sum -c` runs inside the work directory.
 
 **Install.** The previous version is read from the existing binary's
 `version` output when one is installed (`none` otherwise, `unknown` if it
-fails to run). The new binary is copied to a staging file inside the
-install directory (same file system, so the rename is atomic), set to mode
-`0755`, then moved over the target with `mv -f`. The trap also removes the
-staging file. The script prints the previous and the new version, the
-latter from the installed binary's `version` output.
+fails to run). A target that is a directory is refused before any download.
+The new binary is copied to a `mktemp` staging file inside the install
+directory (same file system, so the rename is atomic; an unpredictable name,
+so a planted symlink cannot be written through), set to mode `0755`, run
+with `version`, and only if that succeeds moved over the target with
+`mv -f`. The trap also removes the staging file. The script prints the
+previous and the new version, the latter from the staged binary's `version`
+output.
 
 **Scope.** The binary only: no service, user, config or dnsmasq change.
 
