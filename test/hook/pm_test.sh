@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Tests for the project-manager scripts in .claude/hooks/: pm-issue.sh and
-# the pm-start.sh hook.
+# the pm-start.sh and pm-stop.sh hooks.
 #
 # Each case runs a script in a clean environment (env -i) whose PATH is a
 # per-case temp bin/ directory and nothing else. That directory holds symlinks
@@ -18,6 +18,8 @@
 root=$(cd "$(dirname "$0")/../.." && pwd)
 pm_issue="$root/.claude/hooks/pm-issue.sh"
 pm_start="$root/.claude/hooks/pm-start.sh"
+pm_stop="$root/.claude/hooks/pm-stop.sh"
+stop_stdin='{"session_id":"s","stop_hook_active":false}'
 issue_key=GET_repos_example_dnsmasq_manager_issues_4
 patch_key=PATCH_repos_example_dnsmasq_manager_issues_4
 user_key=GET_user
@@ -267,6 +269,47 @@ run_start_json() {
 		env -i PATH="$bin" TMPDIR="$tmp" CLAUDE_PROJECT_DIR="$project" "$BASH" "$pm_start") \
 		>"$tmp/stdout" 2>"$tmp/stderr"
 	status=$?
+}
+
+# Runs pm-stop.sh with <json> on stdin and CLAUDE_PROJECT_DIR set to the
+# project, from the directory in hook_cwd (default: the case's temp dir).
+# Sets status; stdout and stderr land in the case's temp dir.
+run_stop() {
+	(cd "${hook_cwd:-$tmp}" && printf '%s\n' "$1" |
+		env -i PATH="$bin" TMPDIR="$tmp" CLAUDE_PROJECT_DIR="$project" "$BASH" "$pm_stop") \
+		>"$tmp/stdout" 2>"$tmp/stderr"
+	status=$?
+}
+
+# Sets the default stop-hook arrangement on top of new_case: HEAD 1111111,
+# two commits ahead of origin/main, and HEAD pushed to origin/<branch>.
+stop_case() {
+	new_case
+	git_file head 1111111
+	git_file ahead 2
+	git_file pushed yes
+}
+
+# Replaces the git stub with one that exits 1 for the one call whose
+# arguments are exactly <args> and answers every other call as before. The
+# original stub stays in bin/ as git-real.
+git_fails_on() {
+	mv "$bin/git" "$bin/git-real"
+	stub git "[ \"\$*\" = '$1' ] && exit 1
+exec '$bin/git-real' \"\$@\""
+}
+
+# Prints the block decision pm-stop.sh emits for issue <n> on <branch>.
+stop_line() {
+	printf '{"decision":"block","reason":"Commits on %s are pushed and not yet synced to issue #%s. Dispatch the project-manager agent (Agent tool, subagent_type \\"project-manager\\") with the prompt \\"Sync issue #%s with branch %s\\", relay its report in a line or two, then finish."}\n' "$2" "$1" "$1" "$2"
+}
+
+# Fails when the state directory holds any asked-* entry.
+expect_no_asked_file() {
+	local f
+	for f in "$project/.git/project-manager"/asked-*; do
+		[ -e "$f" ] && problem "asked file written: $f"
+	done
 }
 
 # Prints how many gh calls the call log holds.
@@ -953,6 +996,134 @@ run_start PostToolUse s1
 expect_exit 0
 expect_stdout_empty
 finish_case "start: later commands are silent"
+
+stop_case
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout "$(stop_line 4 feat/4-serve)"
+[ "$(cat "$project/.git/project-manager/asked-feat_4-serve" 2>/dev/null)" = 1111111 ] ||
+	problem "asked-feat_4-serve does not hold 1111111"
+expect_log_lacks "gh "
+finish_case "stop: blocks for new pushed commits"
+
+stop_case
+run_stop "$stop_stdin"
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout_empty
+finish_case "stop: silent for the same commit"
+
+stop_case
+run_stop "$stop_stdin"
+git_file head 2222222
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout "$(stop_line 4 feat/4-serve)"
+[ "$(cat "$project/.git/project-manager/asked-feat_4-serve" 2>/dev/null)" = 2222222 ] ||
+	problem "asked-feat_4-serve does not hold 2222222"
+finish_case "stop: blocks again for a new commit"
+
+stop_case
+run_stop '{"session_id":"s","stop_hook_active": true}'
+expect_exit 0
+expect_stdout_empty
+expect_no_asked_file
+finish_case "stop: silent when stop_hook_active"
+
+stop_case
+run_stop '{"session_id":"s","background_tasks":[{"id":"a","meta":{"x":[1]}}],"stop_hook_active":true}'
+expect_exit 0
+expect_stdout_empty
+expect_no_asked_file
+run_stop '{"session_id":"s","background_tasks":[{"id":"a","meta":{"x":[1]}}],"stop_hook_active":false}'
+expect_exit 0
+expect_stdout "$(stop_line 4 feat/4-serve)"
+finish_case "stop: stop_hook_active after nested arrays"
+
+stop_case
+run_stop '{"stop_hook_active":false,"last_assistant_message":"\"stop_hook_active\": true"}'
+expect_exit 0
+expect_stdout "$(stop_line 4 feat/4-serve)"
+finish_case "stop: field name in message text"
+
+stop_case
+git_file branch main
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout_empty
+expect_no_asked_file
+finish_case "stop: silent on main"
+
+stop_case
+git_file branch feat/no-issue
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout_empty
+expect_no_asked_file
+finish_case "stop: silent on an unlinked branch"
+
+stop_case
+git_file ahead 0
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout_empty
+expect_no_asked_file
+finish_case "stop: silent with nothing ahead"
+
+stop_case
+git_file pushed
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout_empty
+expect_no_asked_file
+finish_case "stop: silent when HEAD is unpushed"
+
+stop_case
+git_file branch claude/session-abc
+run_pm link 6
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout "$(stop_line 6 claude/session-abc)"
+finish_case "stop: recorded link"
+
+stop_case
+stub git "exit 1"
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout_empty
+finish_case "stop: git fails"
+
+for call in "rev-list --count origin/main..HEAD" "merge-base --is-ancestor HEAD origin/feat/4-serve" "rev-parse HEAD"; do
+	stop_case
+	git_fails_on "$call"
+	run_stop "$stop_stdin"
+	expect_exit 0
+	expect_stdout_empty
+	expect_no_asked_file
+	finish_case "stop: git fails on $call"
+done
+
+stop_case
+mkdir -p "$tmp/worktree"
+git_only_in "$tmp/worktree"
+hook_cwd="$tmp/worktree" run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout "$(stop_line 4 feat/4-serve)"
+finish_case "stop: uses the checkout it runs in"
+
+stop_case
+git_only_in "$project"
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout "$(stop_line 4 feat/4-serve)"
+finish_case "stop: outside a repository uses CLAUDE_PROJECT_DIR"
+
+stop_case
+mkdir -p "$project/.git/project-manager/asked-feat_4-serve"
+run_stop "$stop_stdin"
+expect_exit 0
+expect_stdout_empty
+finish_case "stop: silent when the asked file cannot be written"
 
 if [ "$failures" -ne 0 ]; then
 	echo "$failures case(s) failed"
