@@ -23,7 +23,10 @@ reports its version and does nothing else. What exists today:
   [Installation](#installation) and [Releasing](#releasing));
 - dnsmasq behaviour probes in `test/integration/`, run against a mock config
   in `testdata/dnsmasq/dnsmasq.conf`, and their results;
-- a session-start hook that prepares Claude Code cloud sessions.
+- a session-start hook that prepares Claude Code cloud sessions;
+- hooks and a `project-manager` agent that keep the roadmap issues in step
+  with the work (see
+  [How issues stay in step with the work](#how-issues-stay-in-step-with-the-work)).
 
 The hook has not yet been tried in a real cloud session, so whether the
 plugin it installs is usable there is not yet verified (see below). The
@@ -118,7 +121,7 @@ probes need either Linux with `dnsmasq` 2.91 or later and `dig`, or Docker.
 | `make test` | Unit tests with `-race` |
 | `make lint` | `golangci-lint run ./...` |
 | `make tools` | Installs the pinned golangci-lint |
-| `make test-hook` | Tests the session-start hook against stub commands; needs only bash |
+| `make test-hook` | Tests the Claude Code hooks (session start and project manager) against stub commands; needs only bash |
 | `make test-install` | Tests `install.sh` against stub commands; needs bash, and runs the installer under `TEST_SH` (default `/bin/dash`) |
 | `make test-install-docker` | Runs `install.sh` end to end in `alpine:3.23` against the real binary served over local HTTP, then the stub tests under BusyBox ash; needs Docker |
 | `make integration` | Integration probes against a real `dnsmasq`; Linux only, with `dnsmasq` 2.91 or later and `dig` on PATH |
@@ -191,6 +194,33 @@ in a second session. This is pending the cloud test, whose results go in
 [`docs/cloud-session-findings.md`](docs/cloud-session-findings.md). Until
 superpowers is loaded, follow the workflow in `CLAUDE.md` by hand.
 
+## How issues stay in step with the work
+
+The roadmap is in GitHub issues: an epic and one issue per phase, each with
+a task list and exit criteria. Hooks and an agent keep them current, so
+nobody edits them by hand.
+
+- A branch named `<type>/<issue>-<slug>`, such as `feat/4-serve`, belongs to
+  that issue. Where the name cannot be chosen, as in a cloud session,
+  `bash .claude/hooks/pm-issue.sh link <issue>` records the link instead.
+- When work starts on a linked branch, `.claude/hooks/pm-start.sh` gives the
+  session the issue's title, state, URL and body, once per session and
+  branch. The body is shown only when a collaborator wrote it. On any other
+  branch the session is told once how to link one.
+- When a turn ends with pushed commits that have not been synced,
+  `.claude/hooks/pm-stop.sh` holds the session open once and asks it to
+  dispatch the `project-manager` agent (`.claude/agents/project-manager.md`).
+- The agent ticks a checklist item only when a commit on the branch completes
+  it, and keeps one progress comment per branch that names the commit behind
+  each ticked item. It never closes, creates or relabels an issue.
+- A pull request carries `Closes #<issue>`, so the issue closes on merge and
+  the epic's task list follows.
+
+All GitHub calls go through `.claude/hooks/pm-issue.sh`, over REST with
+`gh api`, which also works in cloud sessions. State is kept per clone in
+`.git/project-manager/`. Not yet tried on a real issue: the first roadmap
+branch is the trial, and the design lists what it has to settle.
+
 ## Documents
 
 - [Service requirements](docs/requirements/dnsmasq-api.md): the input to the
@@ -200,6 +230,9 @@ superpowers is loaded, follow the workflow in `CLAUDE.md` by hand.
   supported.
 - [Cloud session findings](docs/cloud-session-findings.md): the cloud test
   checklist, not yet answered.
+- [Project-manager agent design](docs/superpowers/specs/2026-11-17-project-manager-agent-design.md)
+  and [plan](docs/superpowers/plans/2026-11-17-project-manager-agent.md): the
+  hooks and agent that keep issues in step with the work.
 - [Release path design](docs/superpowers/specs/2026-11-17-release-path-design.md)
   and [plan](docs/superpowers/plans/2026-11-17-release-path.md): the CLI on
   cobra, `make dist`, the installer and the release workflow.
