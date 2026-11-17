@@ -15,11 +15,20 @@ GO_BIN_DIR = $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 # so lint works in shells where the Go bin directory is not on PATH.
 GOLANGCI_LINT ?= $(or $(shell command -v golangci-lint 2>/dev/null),$(GO_BIN_DIR)/golangci-lint)
 
-.PHONY: build test test-hook lint tools integration integration-docker
+.PHONY: build dist test test-hook lint tools integration integration-docker
 
 # Static linux/amd64 binary for the DNS host; CGO off keeps it statically linked.
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X github.com/gsdevme/dnsmasq-manager/internal/version.Version=$(VERSION)" -o bin/dnsmasq-manager ./cmd/dnsmasq-manager
+
+# The release asset set: the binary under its release name and its SHA-256
+# checksum. sha256sum runs inside dist so the checksum line names the file
+# without a directory.
+dist: build
+	rm -rf dist
+	mkdir -p dist
+	cp bin/dnsmasq-manager dist/dnsmasq-manager-linux-amd64
+	cd dist && sha256sum dnsmasq-manager-linux-amd64 > dnsmasq-manager-linux-amd64.sha256
 
 test:
 	go test -race ./...
