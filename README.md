@@ -121,7 +121,7 @@ probes need either Linux with `dnsmasq` 2.91 or later and `dig`, or Docker.
 | `make test` | Unit tests with `-race` |
 | `make lint` | `golangci-lint run ./...` |
 | `make tools` | Installs the pinned golangci-lint |
-| `make test-hook` | Tests the Claude Code hooks (session start and project manager) against stub commands; needs only bash |
+| `make test-hook` | Tests the Claude Code hooks (session start, project manager and pull request review) against stub commands; needs only bash |
 | `make test-install` | Tests `install.sh` against stub commands; needs bash, and runs the installer under `TEST_SH` (default `/bin/dash`) |
 | `make test-install-docker` | Runs `install.sh` end to end in `alpine:3.23` against the real binary served over local HTTP, then the stub tests under BusyBox ash; needs Docker |
 | `make integration` | Integration probes against a real `dnsmasq`; Linux only, with `dnsmasq` 2.91 or later and `dig` on PATH |
@@ -221,6 +221,31 @@ All GitHub calls go through `.claude/hooks/pm-issue.sh`, over REST with
 `.git/project-manager/`. Not yet tried on a real issue: the first roadmap
 branch is the trial, and the design lists what it has to settle.
 
+## Automatic review of pull requests
+
+A pull request opened by a local Claude Code session is reviewed by a
+second Claude Code run that has not seen the session's conversation.
+
+- `.claude/hooks/pr-review.sh` runs after each shell command. When the
+  command opened a pull request (`gh pr create`, or a REST `POST` to
+  `/pulls`), it asks GitHub for the open pull request on the current branch
+  and starts `claude -p "/code-review medium --comment <n>"` in the
+  background. The session is told in one line and carries on.
+- The review posts its findings as comments on the pull request, under the
+  `gh` login of whoever runs the session. It is given the tools to read the
+  repository and to comment, and denied the ones that edit files, push or
+  merge; this repository's hooks are turned off inside it. That is a guard
+  against a mistaken step, not a sandbox.
+- Each pull request is reviewed once. State and the run's log are kept per
+  clone in `.git/pr-review/` (`reviewed-<n>`, `review-<n>.log`). A run that
+  fails removes its `reviewed-<n>` file and says so in the log. To review
+  again after more commits, run `/code-review <n>` in a session.
+- `PR_REVIEW_EFFORT` sets the review's effort level: `low`, `medium` (the
+  default), `high` or `xhigh`.
+
+Not covered: pull requests opened in the browser, by release-please or from
+a cloud session.
+
 ## Documents
 
 - [Service requirements](docs/requirements/dnsmasq-api.md): the input to the
@@ -233,6 +258,9 @@ branch is the trial, and the design lists what it has to settle.
 - [Project-manager agent design](docs/superpowers/specs/2026-11-17-project-manager-agent-design.md)
   and [plan](docs/superpowers/plans/2026-11-17-project-manager-agent.md): the
   hooks and agent that keep issues in step with the work.
+- [Pull request review hook design](docs/superpowers/specs/2026-11-19-pr-review-hook-design.md)
+  and [plan](docs/superpowers/plans/2026-11-19-pr-review-hook.md): the hook
+  that starts a fresh-context review of each pull request a session opens.
 - [Release path design](docs/superpowers/specs/2026-11-17-release-path-design.md)
   and [plan](docs/superpowers/plans/2026-11-17-release-path.md): the CLI on
   cobra, `make dist`, the installer and the release workflow.
