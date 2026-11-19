@@ -36,6 +36,17 @@ and exit criteria.
   do not tick items or write progress comments by hand.
 - Only pushed commits count as progress.
 
+## Pull requests
+
+Opening a pull request from a local session (`gh pr create`, or a REST `POST` to
+`/pulls`) starts a `/code-review` of it in the background, in a separate Claude Code
+run with a fresh context. Its findings are posted on the pull request as comments.
+
+- Tell the owner the review has started; do not wait for it and do not run a second one.
+- Read its comments before merging. The run's log is `.git/pr-review/review-<n>.log`;
+  if the run failed, the log says so and the pull request has no review.
+- It runs once per pull request. After more commits, run `/code-review <n>` by hand.
+
 ## Commands
 
 - `make build`: static `linux/amd64` binary at `bin/dnsmasq-manager`, for the DNS host.
@@ -43,8 +54,8 @@ and exit criteria.
   `VERSION=v0.1.0` stamps the version.
 - `make test`: unit tests with `-race`.
 - `make lint`: golangci-lint at the version pinned in the Makefile (`make tools` installs it).
-- `make test-hook`: tests the Claude Code hooks (session start and project manager)
-  against stub commands; needs only bash.
+- `make test-hook`: tests the Claude Code hooks (session start, project manager and
+  pull request review) against stub commands; needs only bash.
 - `make test-install`: tests `install.sh` against stub commands. Needs bash, and dash as
   the default `TEST_SH`.
 - `make test-install-docker`: runs `install.sh` end to end in `alpine:3.23` against the
