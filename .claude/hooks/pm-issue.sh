@@ -52,14 +52,28 @@ pm_flat() {
 	printf '%s\n' "${1//\//_}"
 }
 
-# Creates the state directory, <git-common-dir>/project-manager, and prints
-# its path. Returns 1 outside a repository or when it cannot be created.
+# Creates the state directory <git-common-dir>/<name>, <name> defaulting to
+# project-manager, and prints its absolute path. Returns 1 outside a
+# repository or when it cannot be created.
 pm_state_dir() {
-	local common
+	local name=${1:-project-manager} common
 	common=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
 	[ -n "$common" ] || return 1
-	mkdir -p "$common/project-manager" 2>/dev/null || return 1
-	printf '%s\n' "$common/project-manager"
+	case $common in
+	/*) ;;
+	*) common=$PWD/$common ;;
+	esac
+	mkdir -p "$common/$name" 2>/dev/null || return 1
+	printf '%s\n' "$common/$name"
+}
+
+# Creates <file> only when it does not exist yet. Returns non-zero when it
+# exists, when another run created it first, or when it cannot be written.
+pm_claim() {
+	(
+		set -C
+		: >"$1"
+	) 2>/dev/null
 }
 
 # Returns 0 when <value> is an issue number: digits, no leading zero.

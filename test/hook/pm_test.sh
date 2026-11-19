@@ -299,6 +299,16 @@ git_fails_on() {
 exec '$bin/git-real' \"\$@\""
 }
 
+# Replaces the git stub with one that answers `rev-parse --git-common-dir`
+# with the relative path .git, as real git does at the top of a main
+# checkout, and every other call as before. The original stub stays in bin/
+# as git-real.
+git_common_relative() {
+	mv "$bin/git" "$bin/git-real"
+	stub git "[ \"\$*\" = 'rev-parse --git-common-dir' ] && { echo .git; exit 0; }
+exec '$bin/git-real' \"\$@\""
+}
+
 # Prints the block decision pm-stop.sh emits for issue <n> on <branch>.
 stop_line() {
 	printf '{"decision":"block","reason":"Commits on %s are pushed and not yet synced to issue #%s. Dispatch the project-manager agent (Agent tool, subagent_type \\"project-manager\\") with the prompt \\"Sync issue #%s with branch %s\\", relay its report in a line or two, then finish."}\n' "$2" "$1" "$1" "$2"
@@ -487,6 +497,44 @@ run_fn pm_issue_for_branch feat/0-serve
 expect_exit 1
 expect_stdout_empty
 finish_case "issue: a leading zero in the name is unlinked"
+
+new_case
+run_fn pm_state_dir
+expect_exit 0
+want "$project/.git/project-manager"
+expect_stdout_file "$tmp/want"
+[ -d "$project/.git/project-manager" ] || problem "project-manager was not created"
+run_fn pm_state_dir pr-review
+expect_exit 0
+want "$project/.git/pr-review"
+expect_stdout_file "$tmp/want"
+[ -d "$project/.git/pr-review" ] || problem "pr-review was not created"
+finish_case "state: creates the named directory"
+
+new_case
+git_common_relative
+run_fn pm_state_dir
+expect_exit 0
+want "$(cd "$project" && pwd -P)/.git/project-manager"
+expect_stdout_file "$tmp/want"
+finish_case "state: a relative common dir is made absolute"
+
+new_case
+: >"$project/.git/pr-review"
+run_fn pm_state_dir pr-review
+expect_exit 1
+expect_stdout_empty
+finish_case "state: a directory that cannot be created"
+
+new_case
+run_fn pm_claim "$tmp/claim"
+expect_exit 0
+[ -f "$tmp/claim" ] || problem "the claim file was not created"
+run_fn pm_claim "$tmp/claim"
+[ "$status" -ne 0 ] || problem "a second claim succeeded"
+run_fn pm_claim "$tmp/missing/claim"
+[ "$status" -ne 0 ] || problem "a claim in a missing directory succeeded"
+finish_case "claim: once only"
 
 new_case
 issue_fixture "$body"

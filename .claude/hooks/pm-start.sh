@@ -110,15 +110,6 @@ pm_start_is_subagent() {
 		grep -q '"agent_id"[[:space:]]*:[[:space:]]*"[^"]'
 }
 
-# Creates <file> only when it does not exist yet. Returns non-zero when it
-# exists, when another run created it first, or when it cannot be written.
-pm_start_claim() {
-	(
-		set -C
-		: >"$1"
-	) 2>/dev/null
-}
-
 # Runs the hook: works out the session, branch and issue, and emits the
 # context or the unlinked note when this session has not had it for this
 # branch.
@@ -133,12 +124,12 @@ pm_start_main() {
 	seen="$state/seen-$session-$(pm_flat "$branch")"
 	[ -e "$seen" ] && return 0
 	if ! n=$(pm_issue_for_branch "$branch"); then
-		pm_start_claim "$seen" || return 0
+		pm_claim "$seen" || return 0
 		pm_start_emit "Project manager: no issue is linked to branch $branch. Work for a roadmap issue belongs on a branch named <type>/<issue>-<slug>; where the name cannot be chosen, run: bash .claude/hooks/pm-issue.sh link <issue>"
 		return 0
 	fi
 	command -v gh >/dev/null 2>&1 || return 0
-	pm_start_claim "$seen" || return 0
+	pm_claim "$seen" || return 0
 	tmp_root=${TMPDIR:-/tmp}
 	work=$(mktemp -d "${tmp_root%/}/pm-start.XXXXXX") || return 0
 	if pm_fetch_issue "$n" "$work/issue" 2>/dev/null; then
