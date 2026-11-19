@@ -34,6 +34,18 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pm-start.sh",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh pr create*)",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pr-review.sh create",
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh api *)",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pr-review.sh api",
+            "timeout": 20
           }
         ]
       }

@@ -38,6 +38,7 @@ test:
 test-hook:
 	bash test/hook/hook_test.sh
 	bash test/hook/pm_test.sh
+	bash test/hook/pr_review_test.sh
 
 # Runs install.sh against stub commands. Needs bash for the harness and the
 # shell in TEST_SH (default /bin/dash) to run the installer.
