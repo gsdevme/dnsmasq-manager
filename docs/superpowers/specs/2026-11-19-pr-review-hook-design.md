@@ -157,6 +157,11 @@ log says so, so the pull request is not left marked as reviewed.
 
 ### The review run
 
+Amended by
+[the single review comment design](2026-11-19-pr-review-single-comment-design.md):
+the run no longer has `gh api` or a deny list, and the hook posts the
+findings as one comment. The rest of this section is as first built.
+
 Launched detached, with output to the log and stdin from `/dev/null`:
 
 ```sh

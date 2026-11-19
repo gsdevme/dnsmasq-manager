@@ -40,11 +40,13 @@ and exit criteria.
 
 Opening a pull request from a local session (`gh pr create`, or a REST `POST` to
 `/pulls`) starts a `/code-review` of it in the background, in a separate Claude Code
-run with a fresh context. Its findings are posted on the pull request as comments.
+run with a fresh context. That run only reads; when it finishes, the hook posts its
+findings on the pull request as one comment.
 
 - Tell the owner the review has started; do not wait for it and do not run a second one.
-- Read its comments before merging. The run's log is `.git/pr-review/review-<n>.log`;
-  if the run failed, the log says so and the pull request has no review.
+- Read its comment before merging. The findings are in `.git/pr-review/review-<n>.md`
+  and the run's log in `review-<n>.log`; if the run failed or nothing was posted, the
+  log says why.
 - It runs once per pull request. After more commits, run `/code-review <n>` by hand.
 
 ## Commands

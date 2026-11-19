@@ -229,17 +229,25 @@ second Claude Code run that has not seen the session's conversation.
 - `.claude/hooks/pr-review.sh` runs after each shell command. When the
   command opened a pull request (`gh pr create`, or a REST `POST` to
   `/pulls`), it asks GitHub for the open pull request on the current branch
-  and starts `claude -p "/code-review medium --comment <n>"` in the
-  background. The session is told in one line and carries on.
-- The review posts its findings as comments on the pull request, under the
-  `gh` login of whoever runs the session. It is given the tools to read the
-  repository and to comment, and denied the ones that edit files, push or
-  merge; this repository's hooks are turned off inside it. That is a guard
-  against a mistaken step, not a sandbox.
-- Each pull request is reviewed once. State and the run's log are kept per
-  clone in `.git/pr-review/` (`reviewed-<n>`, `review-<n>.log`). A run that
-  fails removes its `reviewed-<n>` file and says so in the log. To review
-  again after more commits, run `/code-review <n>` in a session.
+  and starts `claude -p "/code-review medium <n>"` in the background. The
+  session is told in one line and carries on.
+- The review run only reads and reports. Its tools are read-only, the
+  writing ones (`Edit`, `Write`, `gh api`, `git push`) are denied by name,
+  and this repository's hooks are turned off inside it.
+- When the run finishes, the hook posts its findings as one comment on the
+  pull request, under the `gh` login of whoever runs the session. The
+  comment names the commit reviewed and lists each finding with its file
+  and line (rendered with `jq` when it is installed). Output that is not a
+  list of findings is not posted.
+- The checkout's own path is made repo-relative in the comment. Findings
+  that still hold a local path, a private address or a token are not
+  posted; the log says why and the findings stay on disk.
+- Each pull request is reviewed once. State is kept per clone in
+  `.git/pr-review/`: `reviewed-<n>`, the run's output in `review-<n>.md`,
+  the comment body in `review-<n>.body.md` and the log in
+  `review-<n>.log`. A run that fails, prints nothing or
+  cannot post removes its `reviewed-<n>` file and says so in the log. To
+  review again after more commits, run `/code-review <n>` in a session.
 - `PR_REVIEW_EFFORT` sets the review's effort level: `low`, `medium` (the
   default), `high` or `xhigh`.
 
@@ -261,6 +269,9 @@ a cloud session.
 - [Pull request review hook design](docs/superpowers/specs/2026-11-19-pr-review-hook-design.md)
   and [plan](docs/superpowers/plans/2026-11-19-pr-review-hook.md): the hook
   that starts a fresh-context review of each pull request a session opens.
+  [Amended](docs/superpowers/specs/2026-11-19-pr-review-single-comment-design.md)
+  ([plan](docs/superpowers/plans/2026-11-19-pr-review-single-comment.md))
+  so that the hook, not the review run, posts the findings.
 - [Release path design](docs/superpowers/specs/2026-11-17-release-path-design.md)
   and [plan](docs/superpowers/plans/2026-11-17-release-path.md): the CLI on
   cobra, `make dist`, the installer and the release workflow.
