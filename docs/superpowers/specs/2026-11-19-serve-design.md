@@ -539,8 +539,6 @@ Proposals the owner has not yet seen in this form:
   corrected before the code is.
 - A real ingress controller publishing the status address; the harness sets
   it by hand.
-- That dnsmasq 2.91 serves AAAA lines and ignores `#@` lines in a
-  hosts-directory file. The integration tests in this change check both.
 - The production dnsmasq build's compile-time options since the upgrade.
 
 ## Left to the builder
