@@ -1,0 +1,105 @@
+# Example Helm values for the external-dns chart, for driving dnsmasq-manager
+# from a Kubernetes cluster. Checked against chart 1.24.0, the chart release
+# whose appVersion is external-dns v0.24.0 (`helm template` with these values
+# and the patches below).
+#
+# Placeholders to replace:
+#   <dns-host>      the DNS host's LAN address, where DNSMASQ_MANAGER_WEBHOOK_ADDR
+#                   listens, for example 10.0.0.53
+#   <private-zone>  the zone, exactly as in DNSMASQ_MANAGER_ZONES, for example
+#                   home.example.test
+#   <id>            a name for this external-dns instance, unique among the
+#                   instances writing to the same DNS host
+#
+# The webhook runs remotely, on the DNS host beside dnsmasq, not as a sidecar
+# in the external-dns pod. external-dns reaches it over the LAN at
+# --webhook-provider-url. The listener is plain HTTP and guarded only by a
+# source-IP allowlist (DNSMASQ_MANAGER_WEBHOOK_ALLOWED_SOURCES): external-dns
+# v0.24.0 sends no auth header and has no flags for one, a client certificate
+# or a custom CA. List there the addresses the DNS host sees the pod's traffic
+# come from, usually the cluster nodes' LAN addresses.
+#
+# Chart 1.24.0 always adds a sidecar container named `webhook` when
+# provider.name is `webhook`, and refuses to render without an image for it.
+# There is no value that turns the sidecar off. So this file names a
+# do-nothing placeholder image only to let the chart render, and the sidecar
+# must then be removed after rendering: for example with Flux's
+# HelmRelease `spec.postRenderers`, or a kustomize `helmCharts` overlay, using
+# these two patches (the names assume the release is called `external-dns`;
+# check yours with `helm template`):
+#
+#   - target: {kind: Deployment, name: external-dns}
+#     patch: |
+#       apiVersion: apps/v1
+#       kind: Deployment
+#       metadata:
+#         name: external-dns
+#       spec:
+#         template:
+#           spec:
+#             containers:
+#               - name: webhook
+#                 $patch: delete
+#   - target: {kind: Service, name: external-dns}
+#     patch: |
+#       - op: remove
+#         path: /spec/ports/1      # the http-webhook port, 8080
+#
+# Leaving the Service port in place is harmless (nothing listens on it), but
+# the sidecar must go: its liveness probe would fail and restart the pod.
+
+provider:
+  # Renders --provider=webhook.
+  name: webhook
+  webhook:
+    # Placeholder only, so the chart renders; the container is removed by the
+    # post-render patch above and never runs.
+    image:
+      repository: registry.k8s.io/pause
+      tag: "3.10"
+
+# Renders --source=ingress. The chart's default is [service, ingress]; only
+# Ingresses are wanted here.
+sources:
+  - ingress
+
+# Renders --policy=sync. Required: external-dns v0.24.0 has no default policy
+# and the chart fails without one. `sync` also deletes records whose Ingress
+# is gone; `upsert-only` would never delete.
+policy: sync
+
+# Renders --registry=txt (also the chart's default, set here to be explicit).
+# The TXT ownership records external-dns writes are kept by dnsmasq-manager in
+# its managed file and returned from GET /records; they are never published in
+# DNS. Do not use `noop`: without ownership records external-dns would try to
+# change records created through the REST API, and the webhook refuses every
+# such change set.
+registry: txt
+
+# Renders --txt-owner-id=<id>. Without it external-dns uses `default`.
+txtOwnerId: <id>
+
+# Renders --domain-filter=<private-zone>. external-dns also learns the zone
+# from the webhook's negotiation reply; the filter keeps it from planning
+# names the service would refuse anyway.
+domainFilters:
+  - <private-zone>
+
+# The chart has no dedicated keys for these two flags, so they go through
+# extraArgs (a map renders each entry as --key=value).
+extraArgs:
+  # Where the webhook listens on the DNS host (DNSMASQ_MANAGER_WEBHOOK_ADDR).
+  # Plain HTTP; see the allowlist note at the top.
+  webhook-provider-url: http://<dns-host>:8888
+  # Only Ingresses of the private ingress controller. Their status address,
+  # which the controller publishes as its node's LAN IP, becomes the record's
+  # target, and it must fall inside DNSMASQ_MANAGER_ALLOWED_CIDRS.
+  ingress-class: traefik-private
+
+# Not set, deliberately:
+# - interval: the chart default, 1m, is fine; each sync is a GET /records, a
+#   POST /adjustendpoints and, only when something changed, a POST /records.
+# - managedRecordTypes: the default includes CNAME. An Ingress whose status
+#   is a hostname yields a CNAME, which the service does not support; it drops
+#   it in /adjustendpoints and logs it (also shown on the web page) rather than
+#   failing the sync.

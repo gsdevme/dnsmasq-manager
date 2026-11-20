@@ -2,8 +2,23 @@
 
 ## Project
 
-A Go service, not yet written: an HTTP API for LAN DNS records served by dnsmasq, with an external-dns webhook provider on top.
+A Go service: an HTTP API for LAN DNS records served by dnsmasq, with an external-dns webhook provider on top.
+`dnsmasq-manager serve` runs both and a read-only web page over one managed hosts file.
 The service requirements are in `docs/requirements/dnsmasq-api.md`; start any service work there.
+Its design is `docs/superpowers/specs/2026-11-19-serve-design.md`.
+
+Packages under `internal/`:
+
+- `records`: record and TXT types, the validation policy, the mutex-guarded store.
+- `hostsfile`: render and strictly parse the managed file; atomic load and save.
+- `config`: `DNSMASQ_MANAGER_*` environment into a checked `Config`.
+- `health`: hosts-dir check and the `version.bind` probe of dnsmasq.
+- `history`: the in-memory ring of recent requests and its middleware.
+- `api`: REST handlers and bearer auth.
+- `webhook`: external-dns v0.24.0 handlers, change sets and the source allowlist.
+- `web`: the read-only page.
+- `server`: listeners, TLS, graceful shutdown.
+- `cli`, `version`: the cobra commands (`serve`, `version`) and the build version.
 
 ## Workflow
 
@@ -66,6 +81,8 @@ findings on the pull request as one comment.
   `dig` on PATH. Use it in cloud sessions and CI.
 - `make integration-docker`: the same probes in `alpine:3.23`, pinned to dnsmasq 2.91.
   Use it on the Mac, and whenever the result must match production dnsmasq 2.91.
+- `make e2e`: runs real external-dns v0.24.0 against the service beside dnsmasq 2.91,
+  in containers. Needs Docker.
 
 ## Rules
 
@@ -101,5 +118,5 @@ findings on the pull request as one comment.
 
 ## UI changes
 
-The service will have a small read-only web page. Check any change to it in a real
+The service has a small read-only web page (`internal/web`). Check any change to it in a real
 browser, and attach before and after screenshots to the pull request.

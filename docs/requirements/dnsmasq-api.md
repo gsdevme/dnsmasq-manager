@@ -60,6 +60,24 @@ throughout; the real zone is supplied as config.
   service-design decision. dnsmasq before 2.88 did need SIGHUP for updates
   and removals, which is part of why older versions are not supported.
   Details are in [`docs/dnsmasq-findings.md`](../dnsmasq-findings.md).
+- The full list of what proved wrong in the original, deliverable 4, is in
+  [`docs/requirements-corrections.md`](../requirements-corrections.md). The
+  ones not already above:
+  - The webhook auth decision is made: its own plain-HTTP listener guarded
+    by a source-IP allowlist. mTLS is impossible too, since external-dns
+    v0.24.0 cannot present a client certificate.
+  - external-dns v0.24.0 success codes are exact (204 for `POST /records`,
+    200 for `GET /records` and `POST /adjustendpoints`), and any 4xx during
+    a sync makes it exit; only 500 to 510 are retried.
+  - Negotiation must return `{"include":[...]}`; an unknown key is ignored
+    and filters nothing.
+  - `/adjustendpoints` must drop what the service would refuse and return
+    the rest normalised, not unchanged.
+  - `--policy` has no default in v0.24.0 and must be set.
+  - CNAME is unsupported in v1, and per-record TTLs are ignored: a hosts file
+    holds neither.
+  - The external-dns chart 1.24.0 always adds a webhook sidecar, so a
+    remote webhook needs a post-render patch.
 
 ## Added by the owner
 
