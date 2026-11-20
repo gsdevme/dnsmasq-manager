@@ -17,6 +17,7 @@ import (
 	"github.com/gsdevme/dnsmasq-manager/internal/health"
 	"github.com/gsdevme/dnsmasq-manager/internal/history"
 	"github.com/gsdevme/dnsmasq-manager/internal/records"
+	"github.com/gsdevme/dnsmasq-manager/internal/webhook"
 )
 
 var token = strings.Repeat("t", 32)
@@ -422,6 +423,63 @@ func TestExternalDNSNameNeedsForce(t *testing.T) {
 	})
 }
 
+// TestRESTWriteDropsOrphanOwnershipTXT is the case where external-dns created
+// only the ownership TXT of a name, and the REST API then took the name
+// without force: the TXT must go, or external-dns believes it owns the name
+// and every later sync fails on it.
+func TestRESTWriteDropsOrphanOwnershipTXT(t *testing.T) {
+	const nas = "nas.home.example.test"
+	const txtOnly = `{"create":[{"dnsName":"a-nas.home.example.test","targets":["\"heritage=external-dns\""],"recordType":"TXT","labels":{"ownedRecord":"nas.home.example.test"}}]}`
+	putNAS := `{"type":"A","values":["10.0.0.40"]}`
+
+	for name, write := range map[string]func(a *testAPI) *httptest.ResponseRecorder{
+		"PUT": func(a *testAPI) *httptest.ResponseRecorder {
+			return a.do(http.MethodPut, "/v1/records/"+nas, putNAS, true)
+		},
+		"PUT forced": func(a *testAPI) *httptest.ResponseRecorder {
+			return a.do(http.MethodPut, "/v1/records/"+nas+"?force=true", putNAS, true)
+		},
+		"DELETE": func(a *testAPI) *httptest.ResponseRecorder {
+			return a.do(http.MethodDelete, "/v1/records/"+nas, "", true)
+		},
+		"DELETE one type": func(a *testAPI) *httptest.ResponseRecorder {
+			return a.do(http.MethodDelete, "/v1/records/"+nas+"?type=AAAA", "", true)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := newTestAPI(t, records.State{})
+			hook := webhook.NewHandler(a.store, []netip.Prefix{netip.MustParsePrefix("192.0.2.0/24")}, a.hist, slog.New(slog.DiscardHandler))
+			call := func(method, path, body string) *httptest.ResponseRecorder {
+				t.Helper()
+				r := httptest.NewRequest(method, path, strings.NewReader(body))
+				if method == http.MethodPost {
+					r.Header.Set("Content-Type", webhook.MediaType)
+				}
+				w := httptest.NewRecorder()
+				hook.ServeHTTP(w, r)
+				return w
+			}
+
+			if w := call(http.MethodPost, "/records", txtOnly); w.Code != http.StatusNoContent {
+				t.Fatalf("webhook TXT-only create = %d, want 204; body %s", w.Code, w.Body.String())
+			}
+			if txts := a.store.State().TXTs; len(txts) != 1 {
+				t.Fatalf("TXTs after webhook create = %+v, want one", txts)
+			}
+			w := write(a)
+			if w.Code != http.StatusOK && w.Code != http.StatusNoContent {
+				t.Fatalf("REST write = %d, want success; body %s", w.Code, w.Body.String())
+			}
+			if txts := a.store.State().TXTs; len(txts) != 0 {
+				t.Errorf("TXTs after REST write = %+v, want none", txts)
+			}
+			if w := call(http.MethodGet, "/records", ""); strings.Contains(w.Body.String(), `"TXT"`) {
+				t.Errorf("webhook GET /records = %s, want no TXT", w.Body.String())
+			}
+		})
+	}
+}
+
 func TestBadQuery(t *testing.T) {
 	tests := []struct{ method, target string }{
 		{http.MethodPut, "/v1/records/" + appName + "?force=yes"},
@@ -437,6 +495,33 @@ func TestBadQuery(t *testing.T) {
 		t.Run(tt.method+" "+tt.target, func(t *testing.T) {
 			a := newTestAPI(t, apiState())
 			wantError(t, a.do(tt.method, tt.target, putA, true), http.StatusBadRequest)
+			if !a.store.State().Equal(apiState()) {
+				t.Errorf("state changed: %+v", a.store.State())
+			}
+		})
+	}
+}
+
+// TestUnknownQueryParameter pins that a misspelt parameter is refused rather
+// than ignored: DELETE ...?Type=AAAA must not remove every record of the name.
+func TestUnknownQueryParameter(t *testing.T) {
+	tests := []struct{ method, target, param string }{
+		{http.MethodDelete, "/v1/records/" + appName + "?Type=AAAA", "Type"},
+		{http.MethodDelete, "/v1/records/" + appName + "?typ=AAAA", "typ"},
+		{http.MethodDelete, "/v1/records/" + appName + "?types=AAAA", "types"},
+		{http.MethodDelete, "/v1/records/" + appName + "?type=AAAA&Force=true", "Force"},
+		{http.MethodPut, "/v1/records/" + appName + "?type=A", "type"},
+		{http.MethodPut, "/v1/records/" + appName + "?force=true&forse=true", "forse"},
+		{http.MethodGet, "/v1/records?type=A", "type"},
+		{http.MethodGet, "/healthz?verbose=1", "verbose"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.target, func(t *testing.T) {
+			a := newTestAPI(t, apiState())
+			msg := wantError(t, a.do(tt.method, tt.target, putA, true), http.StatusBadRequest)
+			if !strings.Contains(msg, `"`+tt.param+`"`) {
+				t.Errorf("error = %q, want it to name %q", msg, tt.param)
+			}
 			if !a.store.State().Equal(apiState()) {
 				t.Errorf("state changed: %+v", a.store.State())
 			}
