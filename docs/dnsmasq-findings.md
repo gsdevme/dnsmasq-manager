@@ -38,7 +38,9 @@ before changing how the service writes records or signals dnsmasq.
   anything older than 2.91.
 - Each test starts its own dnsmasq with an empty hosts directory and writes a
   single file, `managed.hosts`, by writing a dot-prefixed temporary file in
-  the same directory and renaming it into place.
+  the same directory and renaming it into place. The `TestServe*` tests
+  instead run the service binary beside dnsmasq and let it write its own
+  `dnsmasq-manager.hosts` the same way.
 
 ## Probes on 2.91
 
@@ -54,10 +56,39 @@ which on 2.91 assert the same as these. No probe needs a SIGHUP to pass.
 | `TestHostsDirRecordBeatsWildcardWithoutReload` | A record added to the hosts directory overrides the `address=/.home.example.test/` wildcard: the answer changes from 10.0.0.17 to 10.0.0.80 as soon as inotify reads the file, with no SIGHUP. | The service can add names under `<private-zone>` by writing the hosts directory alone; the wildcard does not shadow them. |
 | `TestHostsDirUpdateDropsOldAddress` | Changing the record from 10.0.0.80 to 10.0.0.81 replaces the old address as soon as inotify reads the file, with no SIGHUP: only 10.0.0.81 is served. One second after a SIGHUP the answer is still only 10.0.0.81. | An address change is complete once the file is written. |
 | `TestHostsDirRemovalDropsRecord` | Emptying the file makes the name fall back to the wildcard (10.0.0.17) as soon as inotify reads it, with no SIGHUP. One second after a SIGHUP the answer is still 10.0.0.17. | A removal is complete once the file is written. |
+| `TestServeRESTAddUpdateDelete` | The service's managed file, `dnsmasq-manager.hosts`, with its `# Generated ...` header and `#@ format`, `#@ name` lines, is served: a REST add, change and delete of `app.home.example.test` give 10.0.0.80, then only 10.0.0.81, then the wildcard 10.0.0.17, each as soon as inotify reads the file, with no SIGHUP. | The service writes the file and nothing else; no signal is needed. |
+| `TestServeAAAA` | An IPv6 address line (`fd00:10::80 app.home.example.test`) in a hosts-directory file is served as an AAAA record, changes and disappears like an A line, and leaves the name's A record (10.0.0.80) as it was. | AAAA records live in the same file as A records, one address line each. |
+| `TestServeWebhookChangeSet` | external-dns v0.24.0's create, update and delete change sets for an A and an AAAA record with their `a-` and `aaaa-` TXT ownership records are served the same way. The TXT records exist only as `#@ txt` lines, and a TXT query for `a-app.home.example.test` is never answered locally. | The ownership records can live in comment lines of the served file. |
+| `TestServeStateSurvivesRestart` | After a restart of the service, `GET /v1/records`, the webhook's `GET /records` and the managed file are byte for byte as before, and dnsmasq still answers. | Start-up loads its own file back. |
+| `TestServeHealthzReportsDnsmasqDown` | With dnsmasq killed, `/healthz` answers 503 with `"dnsmasq":"no reply from ...: connection refused"` and `"hosts_dir":"ok"`. | The health probe notices a stopped dnsmasq. |
 
 On an update or removal the dnsmasq log shows
 `inotify: flushed 1 names read from .../managed.hosts` before it rereads the
 file, which is the step that drops the old records.
+
+## The service's file: comment and AAAA lines
+
+A manual run with `--log-queries` on 2.91 (`alpine:3.23`), against a file
+holding a header comment, `#@ format 1`, `#@ name app.home.example.test api`,
+the line `10.0.0.80 app.home.example.test` and a `#@ txt {...}` line,
+showed:
+
+- **`#` and `#@` lines are comments:** dnsmasq logged
+  `read .../dnsmasq-manager.hosts - 1 names`, counting only the address line,
+  and logged no error for the others. No query is answered from them.
+- **A type held for nothing is forwarded:** a query of a type the hosts
+  directory holds nothing for is passed upstream, even when the name has a
+  record of another type there or falls under an `address=` wildcard.
+  `app.home.example.test AAAA` (the name has only an A line),
+  `app.home.example.test TXT`, `a-app.home.example.test TXT` and
+  `other.home.example.test AAAA` were each logged as
+  `forwarded ... to 192.0.2.1`; the mock upstreams never answer, so dig got
+  no reply. `a-app.home.example.test A` was answered by the wildcard
+  (`config a-app.home.example.test is 10.0.0.17`). In production the real
+  upstreams answer those queries, so a TXT query for an ownership name, or
+  an AAAA query for an A-only name, is resolved upstream rather than by
+  dnsmasq; the integration tests treat no reply or an empty answer as "no
+  local answer".
 
 ## What this means for the service
 

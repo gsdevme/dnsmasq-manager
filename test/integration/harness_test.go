@@ -168,10 +168,18 @@ func checkMinVersion(versionLine string) error {
 // attempt and returns the answers sorted. A query that gets no reply is an
 // error, as is any other dig failure.
 func (s *server) query(name string) ([]string, error) {
+	return s.queryType(name, "A")
+}
+
+// queryType asks the server for name's records of qtype, such as "AAAA" or
+// "TXT", with a single one-second dig attempt and returns the answers as dig
+// +short prints them, sorted. A query that gets no reply is an error, as is
+// any other dig failure.
+func (s *server) queryType(name, qtype string) ([]string, error) {
 	out, err := exec.Command("dig", "+short", "+time=1", "+tries=1",
-		"@127.0.0.1", "-p", strconv.Itoa(s.port), name, "A").CombinedOutput()
+		"@127.0.0.1", "-p", strconv.Itoa(s.port), name, qtype).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("dig %s: %w: %s", name, err, bytes.TrimSpace(out))
+		return nil, fmt.Errorf("dig %s %s: %w: %s", name, qtype, err, bytes.TrimSpace(out))
 	}
 	var answers []string
 	for line := range strings.Lines(string(out)) {
@@ -236,23 +244,32 @@ func (s *server) reloadKeeps(t *testing.T, name string, want ...string) {
 	}
 }
 
-// eventually polls name every 100ms until the server answers exactly want, in
-// any order, and fails the test with the last answer or error if that has
-// not happened within five seconds.
+// eventually polls name every 100ms until the server answers exactly want as
+// its A records, in any order, and fails the test with the last answer or
+// error if that has not happened within five seconds.
 func (s *server) eventually(t *testing.T, name string, want ...string) {
+	t.Helper()
+	s.eventuallyType(t, name, "A", want...)
+}
+
+// eventuallyType polls name's records of qtype every 100ms until the server
+// answers exactly want, in any order, and fails the test with the last
+// answer or error if that has not happened within five seconds. An empty want
+// is an answer with no records.
+func (s *server) eventuallyType(t *testing.T, name, qtype string, want ...string) {
 	t.Helper()
 	want = slices.Sorted(slices.Values(want))
 	deadline := time.Now().Add(pollTimeout)
 	for {
-		got, err := s.query(name)
+		got, err := s.queryType(name, qtype)
 		if err == nil && slices.Equal(got, want) {
 			return
 		}
 		if time.Now().After(deadline) {
 			if err != nil {
-				t.Fatalf("%s: want %v within %v, last error: %v", name, want, pollTimeout, err)
+				t.Fatalf("%s %s: want %v within %v, last error: %v", name, qtype, want, pollTimeout, err)
 			}
-			t.Fatalf("%s: want %v within %v, last answer %v", name, want, pollTimeout, got)
+			t.Fatalf("%s %s: want %v within %v, last answer %v", name, qtype, want, pollTimeout, got)
 		}
 		time.Sleep(pollInterval)
 	}
