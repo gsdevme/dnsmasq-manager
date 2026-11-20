@@ -29,9 +29,10 @@ func TestRootCommand(t *testing.T) {
 	}{
 		{name: "version subcommand", args: []string{"version"}, wantOut: "dnsmasq-manager dev\n"},
 		{name: "version flag", args: []string{"--version"}, wantOut: "dnsmasq-manager dev\n"},
-		{name: "no args prints help", args: nil, outContains: []string{"Usage:", "version"}},
+		{name: "no args prints help", args: nil, outContains: []string{"Usage:", "version", "serve", "Serve the DNS records API"}},
 		{name: "unknown command", args: []string{"bogus"}, wantErr: `unknown command "bogus" for "dnsmasq-manager"`},
 		{name: "version takes no args", args: []string{"version", "extra"}, wantErr: `unknown command "extra" for "dnsmasq-manager version"`},
+		{name: "serve takes no args", args: []string{"serve", "extra"}, wantErr: `unknown command "extra" for "dnsmasq-manager serve"`},
 		{name: "no -v shorthand", args: []string{"-v"}, wantErr: "unknown shorthand flag: 'v' in -v"},
 		{name: "no completion command", args: []string{"completion", "bash"}, wantErr: `unknown command "completion" for "dnsmasq-manager"`},
 	}

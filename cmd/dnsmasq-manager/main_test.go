@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 )
@@ -20,7 +21,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if code := run(tt.args, &stdout, &stderr); code != tt.code {
+			if code := run(context.Background(), tt.args, &stdout, &stderr); code != tt.code {
 				t.Errorf("run() = %d, want %d", code, tt.code)
 			}
 			if got := stdout.String(); got != tt.stdout {
