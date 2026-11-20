@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<meta name="color-scheme" content="light dark">
+<title>{{if .Healthy}}dnsmasq-manager{{else}}Unhealthy: dnsmasq-manager{{end}}</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<header class="status {{if .Healthy}}is-ok{{else}}is-fail{{end}}">
+  <p class="service">dnsmasq-manager</p>
+  <h1>{{if .Healthy}}Healthy{{else}}Unhealthy{{end}}</h1>
+  <dl class="checks">
+    {{- range .Checks}}
+    <div class="check {{if .OK}}is-ok{{else}}is-fail{{end}}">
+      <dt><code>{{.Name}}</code> <span class="label">{{.Label}}</span></dt>
+      <dd>{{if .OK}}<span class="verdict">ok</span>{{else}}<span class="verdict">failing</span> <code class="error">{{.Error}}</code>{{end}}</dd>
+    </div>
+    {{- end}}
+  </dl>
+  <p class="refreshed">Checked at <time datetime="{{.Rendered.Format "2006-01-02T15:04:05Z07:00"}}">{{.Rendered.Format "15:04:05"}}</time>. This page reloads every 30 seconds.</p>
+</header>
+
+<section aria-labelledby="records-heading">
+  <h2 id="records-heading">Records <span class="count">{{len .Records}}</span></h2>
+  {{- if .Records}}
+  <div class="scroll">
+    <table class="records">
+      <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Addresses</th><th scope="col">Source</th></tr></thead>
+      <tbody>
+      {{- range .Records}}
+        <tr>
+          <td data-label="Name" class="mono name">{{.Name}}</td>
+          <td data-label="Type"><span class="rtype">{{.Type}}</span></td>
+          <td data-label="Addresses" class="mono addrs">{{range .Values}}<span>{{.}}</span>{{end}}</td>
+          <td data-label="Source"><span class="source src-{{.Source}}">{{.Source}}</span></td>
+        </tr>
+      {{- end}}
+      </tbody>
+    </table>
+  </div>
+  {{- else}}
+  <p class="empty">No records yet. Records added through the API or by external-dns appear here.</p>
+  {{- end}}
+  <p class="note">{{.TXTCount}} TXT ownership record{{if ne .TXTCount 1}}s{{end}} kept for external-dns; they are not published.</p>
+</section>
+
+<section aria-labelledby="history-heading">
+  <h2 id="history-heading">Recent requests <span class="count">{{len .History}}</span></h2>
+  {{- if .History}}
+  <div class="scroll">
+    <table class="history">
+      <thead><tr><th scope="col">Time</th><th scope="col">Listener</th><th scope="col">Request</th><th scope="col" class="num">Status</th><th scope="col">Remote</th><th scope="col" class="num">Took</th><th scope="col">Summary</th></tr></thead>
+      <tbody>
+      {{- range .History}}
+        <tr>
+          <td data-label="Time" class="mono when"><time datetime="{{.Time.Format "2006-01-02T15:04:05Z07:00"}}">{{.Time.Format "Jan 2 15:04:05"}}</time></td>
+          <td data-label="Listener">{{.Listener}}</td>
+          <td data-label="Request" class="mono req"><span class="method">{{.Method}}</span> {{.Path}}</td>
+          <td data-label="Status" class="num status-cell"><span class="code {{.StatusClass}}">{{.Status}}</span></td>
+          <td data-label="Remote" class="mono">{{.Remote}}</td>
+          <td data-label="Took" class="mono num">{{.DurationText}}</td>
+          <td data-label="Summary" class="summary">{{.Summary}}</td>
+        </tr>
+      {{- end}}
+      </tbody>
+    </table>
+  </div>
+  {{- else}}
+  <p class="empty">No requests yet. The last 50 requests to the API and webhook appear here, newest first.</p>
+  {{- end}}
+</section>
+</main>
+</body>
+</html>
