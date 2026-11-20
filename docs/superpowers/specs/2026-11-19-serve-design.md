@@ -262,8 +262,10 @@ fd00:10::80 app.home.example.test
 - Otherwise parse strictly, validate every record against the current
   configuration, re-render, and require the result to equal the file byte for
   byte. Any failure refuses to start with `path:line: reason` and leaves the
-  file alone. This is how a hand edit, a truncated file, or a record the
-  current zones and prefixes no longer allow is caught.
+  file alone. This is how a truncated file, a record the current zones and
+  prefixes no longer allow, or a hand edit that leaves the file in any other
+  form than the service's own is caught. A hand edit that happens to be
+  canonical and within policy loads like any other state.
 - The way out is in the operator's hands and documented in the README: put the
   configuration back, or remove the named name's block (its `#@ name` line and
   address lines) or TXT line. A file with whole entries removed is still
@@ -532,11 +534,11 @@ Proposals the owner has not yet seen in this form:
 
 ## Not verified
 
-- Until the end-to-end harness runs, the external-dns behaviour above is
-  read from its source only. In particular the take-over in call 4
-  (external-dns leaving alone a record whose TXT has gone) is inferred from
-  the plan and registry code. If the harness shows otherwise, the design is
-  corrected before the code is.
+The end-to-end harness (`make e2e`) has since run a real external-dns v0.24.0
+against the service and confirmed what was first read from its source: no
+update loop, a REST-owned name left alone, and a forced take-over holding
+(external-dns logs "missing owner label" and skips the name). What remains:
+
 - A real ingress controller publishing the status address; the harness sets
   it by hand.
 - The production dnsmasq build's compile-time options since the upgrade.
