@@ -123,3 +123,19 @@ jobs:
             echo "::error file=Makefile::bin/dnsmasq-manager is not statically linked"
             exit 1
           fi
+
+  # The real external-dns v0.24.0 against the service beside dnsmasq 2.91, with
+  # a throwaway k3s as the Kubernetes API it reads Ingresses from, all under
+  # Docker Compose. Docker and its compose plugin are preinstalled on the
+  # runner, and the service image builds the binary itself, so no Go setup is
+  # needed. k3s runs privileged, which the hosted runner allows. Takes about
+  # two to three minutes, most of it the fixed "nothing must change" windows.
+  e2e:
+    runs-on: ubuntu-24.04
+    # A normal run takes two to three minutes. A stack that hangs (k3s never
+    # ready, a wait loop that never ends) is cut off here rather than holding
+    # a runner for GitHub's six-hour default.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: make e2e

@@ -1,0 +1,23 @@
+# Template for every e2e Ingress. run.sh replaces __NAME__ and __HOST__ and
+# applies the result; the status address is set afterwards with
+# `kubectl patch --subresource=status`, standing in for an ingress controller.
+# The backend Service does not exist: external-dns reads only the host and
+# the status, and nothing routes traffic in the harness.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: __NAME__
+  namespace: default
+spec:
+  ingressClassName: traefik-private
+  rules:
+    - host: __HOST__
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: placeholder
+                port:
+                  number: 80
