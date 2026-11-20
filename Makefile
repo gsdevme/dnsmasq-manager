@@ -15,7 +15,7 @@ GO_BIN_DIR = $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 # so lint works in shells where the Go bin directory is not on PATH.
 GOLANGCI_LINT ?= $(or $(shell command -v golangci-lint 2>/dev/null),$(GO_BIN_DIR)/golangci-lint)
 
-.PHONY: build dist test test-hook test-install test-install-docker lint tools integration integration-docker
+.PHONY: build dist test test-hook test-install test-install-docker lint tools integration integration-docker e2e
 
 # Static linux/amd64 binary for the DNS host; CGO off keeps it statically linked.
 build:
@@ -72,3 +72,9 @@ integration:
 # Runs the integration probes in Alpine against the production dnsmasq version.
 integration-docker:
 	docker build -f test/integration/Dockerfile -t dnsmasq-manager-integration . && docker run --rm dnsmasq-manager-integration
+
+# Runs the real external-dns v0.24.0 against the service beside dnsmasq 2.91,
+# with a throwaway k3s for its Ingresses, under Docker Compose. Needs only
+# Docker; see test/e2e/run.sh for the checks.
+e2e:
+	bash test/e2e/run.sh

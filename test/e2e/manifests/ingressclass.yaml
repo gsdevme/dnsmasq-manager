@@ -1,0 +1,10 @@
+# The IngressClass the e2e Ingresses name, so they are valid objects in the
+# cluster as they would be in production. external-dns filters on the
+# Ingress's spec.ingressClassName (--ingress-class=traefik-private); no
+# controller implements this class, the harness sets status addresses itself.
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: traefik-private
+spec:
+  controller: example.test/no-controller

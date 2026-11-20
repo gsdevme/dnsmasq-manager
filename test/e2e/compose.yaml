@@ -1,0 +1,121 @@
+# End-to-end harness: the real external-dns v0.24.0 against
+# `dnsmasq-manager serve` beside dnsmasq 2.91, with a throwaway single-node
+# Kubernetes API (k3s) for external-dns to read Ingresses from.
+#
+# Driven by test/e2e/run.sh (`make e2e`); not meant to be brought up by hand,
+# because run.sh starts the services in order and prepares the kubeconfig
+# external-dns reads. No ingress controller runs: run.sh sets each Ingress's
+# status address itself.
+#
+# Nothing here has a restart policy. An external-dns that exits (which v0.24.0
+# does on any 4xx, refused connection or timeout from the webhook) must stay
+# exited so the harness sees it.
+name: dnsmasq-manager-e2e
+
+# Fixed addresses, so the webhook's source allowlist can name external-dns
+# exactly. The subnet is well away from 10.0.0.0/24, where the record
+# addresses used by the checks live, so no container address can be mistaken
+# for a record.
+networks:
+  e2e:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+# k3s writes its kubeconfig here; run.sh writes the copy external-dns reads.
+volumes:
+  kube:
+
+services:
+  # The Kubernetes API. Pinned to a k3s patch release; the image is
+  # multi-arch (amd64 and arm64), so it runs natively on Apple silicon and on
+  # the GitHub runner.
+  k3s:
+    image: rancher/k3s:v1.36.6-k3s1
+    # k3s runs containerd and manages cgroups and iptables, which needs a
+    # privileged container. No workload is ever scheduled, but the kubelet
+    # still has to start for the node to become ready.
+    privileged: true
+    command:
+      - server
+      # Nothing but the API server is needed: no ingress controller, load
+      # balancer, DNS, metrics or storage add-ons.
+      - --disable=traefik
+      - --disable=servicelb
+      - --disable=coredns
+      - --disable=metrics-server
+      - --disable=local-storage
+      # The serving certificate must be valid for the name external-dns uses.
+      - --tls-san=k3s
+      - --node-name=k3s
+      - --write-kubeconfig=/kube/k3s.yaml
+      - --write-kubeconfig-mode=644
+    tmpfs:
+      - /run
+      - /var/run
+    volumes:
+      - kube:/kube
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.10
+
+  # The service under test and the dnsmasq it feeds, built from this checkout.
+  dns:
+    build:
+      context: ../..
+      dockerfile: test/e2e/Dockerfile
+    image: dnsmasq-manager-e2e
+    environment:
+      DNSMASQ_MANAGER_ZONES: home.example.test
+      DNSMASQ_MANAGER_HOSTS_DIR: /etc/dnsmasq.hosts.d
+      # REST stays on loopback; run.sh calls it with curl inside this
+      # container. Plain HTTP keeps the harness free of certificates.
+      DNSMASQ_MANAGER_API_ADDR: 127.0.0.1:8443
+      DNSMASQ_MANAGER_API_PLAIN_HTTP: "true"
+      # An obvious placeholder of the required 32+ characters, not a secret.
+      DNSMASQ_MANAGER_API_TOKEN: e2e-placeholder-token-not-a-secret-0000
+      # The webhook listens on this container's fixed address and admits only
+      # external-dns's fixed address; check 8 calls it from k3s and expects
+      # 403.
+      DNSMASQ_MANAGER_WEBHOOK_ADDR: 172.30.0.20:8888
+      DNSMASQ_MANAGER_WEBHOOK_ALLOWED_SOURCES: 172.30.0.30/32
+      DNSMASQ_MANAGER_WEB_ADDR: "off"
+    # Healthy once the REST listener answers and dnsmasq replies to the
+    # version.bind probe, so external-dns is only started against a webhook
+    # that is already answering.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8443/healthz"]
+      interval: 1s
+      timeout: 2s
+      retries: 60
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.20
+
+  # The real external-dns, with the flags of the documented values snippet.
+  # The image is multi-arch (amd64 and arm64).
+  external-dns:
+    image: registry.k8s.io/external-dns/external-dns:v0.24.0
+    command:
+      - --provider=webhook
+      - --webhook-provider-url=http://172.30.0.20:8888
+      - --source=ingress
+      - --ingress-class=traefik-private
+      - --domain-filter=home.example.test
+      - --registry=txt
+      - --txt-owner-id=e2e
+      # v0.24.0 has no default policy; sync is what deletes records.
+      - --policy=sync
+      # Short, so the harness's "wait several syncs" windows stay short.
+      # run.sh exports E2E_SYNC_INTERVAL and derives its waits from it, so
+      # the two cannot drift apart; 5 seconds when run by hand.
+      - --interval=${E2E_SYNC_INTERVAL:-5}s
+      - --log-level=debug
+      # Written by run.sh from k3s's kubeconfig, with the server address
+      # rewritten from 127.0.0.1 to the k3s service name.
+      - --kubeconfig=/kube/external-dns.yaml
+    volumes:
+      - kube:/kube:ro
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.30
