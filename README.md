@@ -437,8 +437,10 @@ it.
 
 ## Building and testing
 
-Needs Go 1.27 (from `go.mod`). Lint needs golangci-lint at the version pinned
-in the `Makefile`; `make tools` installs it with `go install`. The integration
+Needs Go 1.27 (from `go.mod`). Lint needs golangci-lint and actionlint at the
+versions pinned in the `Makefile`; `make tools` installs them with
+`go install`. It also needs `shellcheck` on PATH, from the system's packages
+(`brew install shellcheck`, `apt-get install shellcheck`). The integration
 probes need either Linux with `dnsmasq` 2.91 or later and `dig`, or Docker;
 the end-to-end harness needs Docker.
 
@@ -447,8 +449,8 @@ the end-to-end harness needs Docker.
 | `make build` | Static `linux/amd64` binary at `bin/dnsmasq-manager`, with the version from `git describe` |
 | `make dist` | The release files in `dist/`: the binary as `dnsmasq-manager-linux-amd64`, its `.sha256` checksum and `install.sh`; `VERSION=v0.1.0` stamps the version |
 | `make test` | Unit tests with `-race` |
-| `make lint` | `golangci-lint run ./...` |
-| `make tools` | Installs the pinned golangci-lint |
+| `make lint` | `golangci-lint run ./...`, `shellcheck` on every shell file and `actionlint` on the workflows |
+| `make tools` | Installs the pinned golangci-lint and actionlint |
 | `make test-hook` | Tests the Claude Code hooks (session start, project manager and pull request review) against stub commands; needs only bash |
 | `make test-release` | Tests `scripts/publish-release.sh` against a stub `gh`, and checks the release-please settings it relies on; needs only bash |
 | `make test-install` | Tests `install.sh` against stub commands; needs bash, and runs the installer under `TEST_SH` (default `/bin/dash`) |

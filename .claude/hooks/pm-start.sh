@@ -120,7 +120,7 @@ pm_start_main() {
 	[ -n "$session" ] || return 0
 	pm_start_is_subagent && return 0
 	branch=$(pm_branch) || return 0
-	state=$(pm_state_dir) || return 0
+	state=$(pm_state_dir project-manager) || return 0
 	seen="$state/seen-$session-$(pm_flat "$branch")"
 	[ -e "$seen" ] && return 0
 	if ! n=$(pm_issue_for_branch "$branch"); then
