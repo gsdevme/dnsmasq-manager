@@ -517,12 +517,13 @@ local sessions and registers `.claude/hooks/session-start.sh` as a
 - In a cloud session it installs the superpowers plugin from the
   `anthropics/claude-plugins-official` marketplace if `claude plugin list`
   does not already show it; installs `dnsmasq-base` and `dnsutils` with
-  `apt-get` if `dnsmasq` or `dig` is missing (as root or with passwordless
-  `sudo`, otherwise it skips them with a note); runs `make tools` if
-  golangci-lint is missing; runs `go mod download`; and adds the Go bin
-  directory to the session's PATH.
+  `apt-get` if `dnsmasq` or `dig` is missing, and `shellcheck` in a separate
+  `apt-get` call if it is missing (as root or with passwordless `sudo`,
+  otherwise it skips them with a note); runs `make tools` if golangci-lint or actionlint is missing; runs
+  `go mod download`; and adds the Go bin directory to the session's PATH.
 - It then prints a short status block (Go version, whether `dnsmasq`, `dig`,
-  golangci-lint and superpowers are present) that becomes session context.
+  `shellcheck`, golangci-lint, actionlint and superpowers are present) that
+  becomes session context.
 - Anything already present is left alone. Every step tolerates failure and
   the hook always exits 0, so a blocked download never stops the session.
 

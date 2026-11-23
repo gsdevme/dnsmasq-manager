@@ -5,7 +5,8 @@
 # Each case runs the hook in a clean environment (env -i) whose PATH is a
 # per-case temp bin/ directory and nothing else. That directory holds symlinks
 # to a handful of basic commands plus stub scripts for everything the hook
-# drives (claude, apt-get, sudo, id, go, make, dnsmasq, dig, golangci-lint),
+# drives (claude, apt-get, sudo, id, go, make, dnsmasq, dig, shellcheck,
+# golangci-lint, actionlint),
 # so no real tool on the machine can be reached. Every stub appends
 # "<name> <args>" to a call log; the case then asserts on the hook's exit
 # code, its stdout and that log.
@@ -128,7 +129,9 @@ base_stubs
 stub id "echo 0"
 stub dnsmasq
 stub dig
+stub shellcheck
 stub golangci-lint
+stub actionlint
 run_hook
 expect_exit_0
 expect_stdout_empty
@@ -146,6 +149,7 @@ expect_stdout_lacks "-output"
 expect_log_line "claude plugin marketplace add anthropics/claude-plugins-official"
 expect_log_line "claude plugin install $plugin --scope user"
 expect_log_line "apt-get install -y --no-install-recommends dnsmasq-base dnsutils"
+expect_log_line "apt-get install -y --no-install-recommends shellcheck"
 expect_log_line "make -C $project tools"
 expect_stdout_line "- superpowers: installed this session (loads after /reload-plugins or in the next session)"
 finish_case "2 cloud, nothing installed, root: installs everything"
@@ -156,7 +160,9 @@ stub claude "[ \"\$1 \$2\" = 'plugin list' ] && echo '$plugin'
 exit 0"
 stub dnsmasq
 stub dig
+stub shellcheck
 stub golangci-lint
+stub actionlint
 run_hook CLAUDE_CODE_REMOTE=true
 expect_exit_0
 expect_log_lacks "install"
@@ -166,7 +172,9 @@ expect_log_lacks "apt-get"
 expect_stdout_line "- superpowers: already installed"
 expect_stdout_line "- dnsmasq: present"
 expect_stdout_line "- dig: present"
+expect_stdout_line "- shellcheck: present"
 expect_stdout_line "- golangci-lint: present"
+expect_stdout_line "- actionlint: present"
 finish_case "3 cloud, everything present: installs nothing"
 
 new_case
@@ -195,6 +203,7 @@ expect_exit_0
 expect_log_lacks "apt-get"
 expect_stdout_line "- dnsmasq: missing"
 expect_stdout_line "- dig: missing"
+expect_stdout_line "- shellcheck: missing"
 finish_case "6 cloud, non-root without sudo: skips apt-get"
 
 new_case
@@ -205,6 +214,62 @@ expect_exit_0
 grep -qxF -- "export PATH=\"\$PATH:$gopath/bin\"" "$tmp/env-file" ||
 	problem "CLAUDE_ENV_FILE lacks the GOPATH/bin export; it holds: $(cat "$tmp/env-file")"
 finish_case "7 cloud, CLAUDE_ENV_FILE set: adds GOPATH/bin to PATH"
+
+new_case
+base_stubs
+stub id "echo 0"
+stub dnsmasq
+stub dig
+stub golangci-lint
+stub actionlint
+run_hook CLAUDE_CODE_REMOTE=true
+expect_exit_0
+expect_log_line "apt-get install -y --no-install-recommends shellcheck"
+expect_log_lacks "dnsmasq-base"
+expect_log_lacks "^make "
+finish_case "8 cloud, only shellcheck missing: installs it with apt-get"
+
+new_case
+base_stubs
+stub id "echo 0"
+stub apt-get "case \"\$*\" in *shellcheck*) exit 1 ;; esac
+exit 0"
+run_hook CLAUDE_CODE_REMOTE=true
+expect_exit_0
+expect_log_line "apt-get install -y --no-install-recommends dnsmasq-base dnsutils"
+expect_log_line "apt-get update"
+expect_stdout_line "- shellcheck: missing"
+finish_case "8a cloud, shellcheck cannot be installed: dnsmasq and dig still are"
+
+new_case
+base_stubs
+stub dnsmasq
+stub dig
+stub shellcheck
+stub golangci-lint
+run_hook CLAUDE_CODE_REMOTE=true
+expect_exit_0
+expect_log_line "make -C $project tools"
+expect_log_lacks "apt-get"
+expect_stdout_line "- golangci-lint: present"
+expect_stdout_line "- actionlint: missing"
+finish_case "9 cloud, only actionlint missing: runs make tools"
+
+new_case
+base_stubs
+stub dnsmasq
+stub dig
+stub shellcheck
+mkdir -p "$gopath/bin"
+: >"$gopath/bin/golangci-lint"
+: >"$gopath/bin/actionlint"
+chmod +x "$gopath/bin/golangci-lint" "$gopath/bin/actionlint"
+run_hook CLAUDE_CODE_REMOTE=true
+expect_exit_0
+expect_log_lacks "^make "
+expect_stdout_line "- golangci-lint: present"
+expect_stdout_line "- actionlint: present"
+finish_case "10 cloud, lint tools only in GOPATH/bin: counts them as present"
 
 if [ "$failures" -ne 0 ]; then
 	echo "$failures case(s) failed"
