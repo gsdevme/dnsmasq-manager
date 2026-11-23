@@ -2,8 +2,12 @@
 #
 # release-please reads the Conventional Commits on main and keeps a release
 # pull request open with the next version and the changelog. Merging that pull
-# request tags the version and creates the GitHub release; the assets job then
-# builds the release files with `make dist` and uploads them.
+# request tags the version and creates the GitHub release as a draft, with its
+# tag forced so the tag exists while the release is a draft. The release
+# stays a draft until the assets job has built the files with `make dist`,
+# attached them and published it. If that job fails, the release stays a
+# draft, `latest` stays on the previous release, and re-running the job
+# finishes it.
 #
 # The version rules live in release-please-config.json. The release pull
 # request is titled "build: release <version>" there, because the default
@@ -20,14 +24,17 @@ on:
 permissions: {}
 
 # One release run at a time, and never cancel one part way: a cancelled run
-# could leave a release without its assets.
+# could leave a draft release without its assets.
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
   # Opens or updates the release pull request, and creates the tag and the
-  # GitHub release when that pull request has been merged.
+  # GitHub release when that pull request has been merged. The release is a
+  # draft and its tag is forced (`draft` and `force-tag-creation` in
+  # release-please-config.json); it stays a draft until the assets job
+  # publishes it.
   release-please:
     runs-on: ubuntu-24.04
     permissions:
@@ -51,27 +58,29 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  # Builds the release files from the tagged commit and attaches them to the
-  # release: the binary, its SHA-256 checksum and install.sh.
+  # Builds the release files from the tagged commit, attaches them to the
+  # draft release (the binary, its SHA-256 checksum and install.sh) and then
+  # publishes it, through scripts/publish-release.sh. Until the last step
+  # succeeds the release is a draft and `latest` stays on the previous
+  # release. If the job fails, re-run it: the upload replaces files a partial
+  # run attached, and a release that is already published is left alone.
   #
   # This job is in the release workflow, not one triggered by the release
   # event, because a release created with GITHUB_TOKEN starts no other
   # workflow.
-  #
-  # Known gap: between the release being created above and this job
-  # finishing, the latest release has no assets, so an install in that window
-  # fails at download and changes nothing.
   assets:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-24.04
     permissions:
-      # Upload assets to the release.
+      # Upload assets to the release and publish it.
       contents: write
     steps:
       - uses: actions/checkout@v7
         with:
           # Build exactly what was tagged, not whatever main has moved to.
+          # The tag exists while the release is still a draft only because
+          # force-tag-creation is set in release-please-config.json.
           ref: ${{ needs.release-please.outputs.tag_name }}
       - uses: actions/setup-go@v7
         with:
@@ -79,7 +88,7 @@ jobs:
           # This job holds a write token, so it does not restore a cache that
           # other runs could have written.
           cache: false
-      - name: Build and upload release assets
+      - name: Build, upload and publish the release
         env:
           # Passed through the environment so the tag is never expanded
           # inside the script text.
@@ -87,4 +96,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           make dist VERSION="$TAG"
-          gh release upload "$TAG" dist/* --clobber
+          bash scripts/publish-release.sh "$TAG" dist

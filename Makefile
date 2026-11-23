@@ -15,7 +15,7 @@ GO_BIN_DIR = $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 # so lint works in shells where the Go bin directory is not on PATH.
 GOLANGCI_LINT ?= $(or $(shell command -v golangci-lint 2>/dev/null),$(GO_BIN_DIR)/golangci-lint)
 
-.PHONY: build dist test test-hook test-install test-install-docker lint tools integration integration-docker e2e
+.PHONY: build dist test test-hook test-release test-install test-install-docker lint tools integration integration-docker e2e
 
 # Static linux/amd64 binary for the DNS host; CGO off keeps it statically linked.
 build:
@@ -39,6 +39,11 @@ test-hook:
 	bash test/hook/hook_test.sh
 	bash test/hook/pm_test.sh
 	bash test/hook/pr_review_test.sh
+
+# Runs scripts/publish-release.sh against a stub gh and checks the
+# release-please settings it relies on; needs only bash.
+test-release:
+	bash test/release/publish_test.sh
 
 # Runs install.sh against stub commands. Needs bash for the harness and the
 # shell in TEST_SH (default /bin/dash) to run the installer.
