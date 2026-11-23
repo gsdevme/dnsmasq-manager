@@ -15,6 +15,24 @@ GO_BIN_DIR = $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 # so lint works in shells where the Go bin directory is not on PATH.
 GOLANGCI_LINT ?= $(or $(shell command -v golangci-lint 2>/dev/null),$(GO_BIN_DIR)/golangci-lint)
 
+# Pinned for the same reason; `make tools` installs it with `go install`.
+ACTIONLINT_VERSION := v1.7.12
+
+# Prefer actionlint on PATH; otherwise the copy `make tools` installed.
+ACTIONLINT ?= $(or $(shell command -v actionlint 2>/dev/null),$(GO_BIN_DIR)/actionlint)
+
+# shellcheck is not a Go program, so `make tools` cannot install it. It is
+# preinstalled on the CI runner; elsewhere install it from the system's
+# packages (`brew install shellcheck`, `apt-get install shellcheck`).
+SHELLCHECK ?= shellcheck
+
+# Every shell file git tracks or would track (untracked and not ignored), so
+# a new script is linted wherever it is added and before it is staged.
+# $(wildcard) drops files deleted from the working tree. shellcheck reads
+# each one's dialect from its shebang: install.sh and the scripts that run
+# inside Alpine are POSIX sh, the rest are bash.
+SHELL_FILES = $(wildcard $(shell git ls-files --cached --others --exclude-standard '*.sh'))
+
 .PHONY: build dist test test-hook test-release test-install test-install-docker lint tools integration integration-docker e2e
 
 # Static linux/amd64 binary for the DNS host; CGO off keeps it statically linked.
@@ -60,11 +78,18 @@ test-install-docker:
 	docker build --platform linux/amd64 -f test/install/Dockerfile -t dnsmasq-manager-install-e2e .
 	docker run --rm --platform linux/amd64 -v "$(CURDIR)/dist:/dist:ro" dnsmasq-manager-install-e2e
 
+# golangci-lint on the Go code, shellcheck on every shell file (-x follows
+# the files they source) and actionlint on the workflows in .github/workflows.
+# A missing tool fails the target rather than skipping its check.
 lint:
 	$(GOLANGCI_LINT) run ./...
+	$(SHELLCHECK) -x $(SHELL_FILES)
+	$(ACTIONLINT)
 
+# Installs the pinned golangci-lint and actionlint into the Go bin directory.
 tools:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 
 # Probes a real dnsmasq with the mock config in testdata/dnsmasq. Needs Linux
 # with dnsmasq and dig on PATH; elsewhere use integration-docker.

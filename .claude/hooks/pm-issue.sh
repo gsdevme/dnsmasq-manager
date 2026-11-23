@@ -90,7 +90,7 @@ pm_is_number() {
 pm_issue_for_branch() {
 	local branch=$1 dir n="" re='^[^/]+/([1-9][0-9]*)-'
 	[ -n "$branch" ] && [ "$branch" != main ] || return 1
-	if dir=$(pm_state_dir) && [ -f "$dir/link-$(pm_flat "$branch")" ]; then
+	if dir=$(pm_state_dir project-manager) && [ -f "$dir/link-$(pm_flat "$branch")" ]; then
 		read -r n <"$dir/link-$(pm_flat "$branch")"
 		if pm_is_number "$n"; then
 			printf '%s\n' "$n"
@@ -236,7 +236,7 @@ pm_cmd_link() {
 		pm_error "main is never linked to an issue"
 		return 1
 	fi
-	dir=$(pm_state_dir) || {
+	dir=$(pm_state_dir project-manager) || {
 		pm_error "cannot create the state directory"
 		return 1
 	}

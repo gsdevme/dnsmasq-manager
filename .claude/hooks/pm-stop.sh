@@ -49,7 +49,7 @@ pm_stop_main() {
 	git merge-base --is-ancestor HEAD "origin/$branch" 2>/dev/null || return 0
 	head=$(git rev-parse HEAD 2>/dev/null) || return 0
 	[ -n "$head" ] || return 0
-	state=$(pm_state_dir) || return 0
+	state=$(pm_state_dir project-manager) || return 0
 	asked="$state/asked-$(pm_flat "$branch")"
 	[ -f "$asked" ] && IFS= read -r last <"$asked"
 	[ "$head" = "$last" ] && return 0

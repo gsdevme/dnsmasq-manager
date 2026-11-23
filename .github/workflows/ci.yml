@@ -26,11 +26,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Static analysis plus the fast tests: Go unit tests (with the race
-  # detector), the session-start hook tests, the release script's tests
-  # (scripts/publish-release.sh against a stub gh) and the installer's stub
-  # suite, which run against stub commands and need only bash (and dash for
-  # the installer), and shellcheck on the installer and the release script.
+  # Static analysis (`make lint`: golangci-lint, shellcheck on every shell
+  # file and actionlint on these workflows) plus the fast tests: Go unit
+  # tests (with the race detector), the session-start hook tests, the release
+  # script's tests (scripts/publish-release.sh against a stub gh) and the
+  # installer's stub suite, which run against stub commands and need only
+  # bash (and dash for the installer).
   lint-and-unit:
     runs-on: ubuntu-24.04
     steps:
@@ -41,10 +42,15 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # Installs the golangci-lint version pinned in the Makefile into the Go
-      # bin directory. `make lint` resolves golangci-lint from PATH first, and
-      # setup-go put that directory on PATH, so lint uses the pinned copy.
+      # Installs the golangci-lint and actionlint versions pinned in the
+      # Makefile into the Go bin directory. `make lint` resolves both from
+      # PATH first, and setup-go put that directory on PATH, so lint uses the
+      # pinned copies.
       - run: make tools
+      # golangci-lint, shellcheck on every shell file and actionlint on the
+      # workflows. shellcheck is expected to be preinstalled on the runner;
+      # if it is ever missing this step fails rather than silently skipping
+      # the check.
       - run: make lint
       # `go test -race` needs cgo and a C compiler; gcc ships on the runner.
       - run: make test
@@ -54,13 +60,6 @@ jobs:
       # /bin/dash. Ubuntu ships dash in every install as the shell /bin/sh
       # links to, so /bin/dash exists on the runner without any setup.
       - run: make test-install
-      # shellcheck is expected to be preinstalled on the runner. It is called
-      # directly, so if it is ever missing this step fails rather than
-      # silently skipping the check.
-      - run: shellcheck --shell=sh install.sh
-      # The release script and its tests are bash; shellcheck reads that from
-      # their shebangs.
-      - run: shellcheck scripts/publish-release.sh test/release/publish_test.sh
 
   # The installer end to end in Alpine 3.23, the minimum it supports: the
   # real install.sh under BusyBox ash, fetching the real binary from a local

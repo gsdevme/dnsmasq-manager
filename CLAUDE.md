@@ -70,7 +70,8 @@ findings on the pull request as one comment.
 - `make dist`: the release files in `dist/` (binary, `.sha256` checksum, `install.sh`);
   `VERSION=v0.1.0` stamps the version.
 - `make test`: unit tests with `-race`.
-- `make lint`: golangci-lint at the version pinned in the Makefile (`make tools` installs it).
+- `make lint`: golangci-lint and actionlint at the versions pinned in the Makefile (`make tools`
+  installs them), and shellcheck on every shell file. shellcheck comes from the system's packages.
 - `make test-hook`: tests the Claude Code hooks (session start, project manager and
   pull request review) against stub commands; needs only bash.
 - `make test-release`: tests `scripts/publish-release.sh` against a stub `gh` and checks the
