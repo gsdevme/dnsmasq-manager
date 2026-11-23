@@ -73,6 +73,8 @@ findings on the pull request as one comment.
 - `make lint`: golangci-lint at the version pinned in the Makefile (`make tools` installs it).
 - `make test-hook`: tests the Claude Code hooks (session start, project manager and
   pull request review) against stub commands; needs only bash.
+- `make test-release`: tests `scripts/publish-release.sh` against a stub `gh` and checks the
+  release-please settings it relies on; needs only bash.
 - `make test-install`: tests `install.sh` against stub commands. Needs bash, and dash as
   the default `TEST_SH`.
 - `make test-install-docker`: runs `install.sh` end to end in `alpine:3.23` against the

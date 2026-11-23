@@ -27,9 +27,10 @@ concurrency:
 
 jobs:
   # Static analysis plus the fast tests: Go unit tests (with the race
-  # detector), the session-start hook tests and the installer's stub suite,
-  # which run against stub commands and need only bash (and dash for the
-  # installer), and shellcheck on the installer.
+  # detector), the session-start hook tests, the release script's tests
+  # (scripts/publish-release.sh against a stub gh) and the installer's stub
+  # suite, which run against stub commands and need only bash (and dash for
+  # the installer), and shellcheck on the installer and the release script.
   lint-and-unit:
     runs-on: ubuntu-24.04
     steps:
@@ -48,6 +49,7 @@ jobs:
       # `go test -race` needs cgo and a C compiler; gcc ships on the runner.
       - run: make test
       - run: make test-hook
+      - run: make test-release
       # The installer's stub suite runs install.sh under TEST_SH, default
       # /bin/dash. Ubuntu ships dash in every install as the shell /bin/sh
       # links to, so /bin/dash exists on the runner without any setup.
@@ -56,6 +58,9 @@ jobs:
       # directly, so if it is ever missing this step fails rather than
       # silently skipping the check.
       - run: shellcheck --shell=sh install.sh
+      # The release script and its tests are bash; shellcheck reads that from
+      # their shebangs.
+      - run: shellcheck scripts/publish-release.sh test/release/publish_test.sh
 
   # The installer end to end in Alpine 3.23, the minimum it supports: the
   # real install.sh under BusyBox ash, fetching the real binary from a local

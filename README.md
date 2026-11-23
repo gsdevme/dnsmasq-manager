@@ -450,6 +450,7 @@ the end-to-end harness needs Docker.
 | `make lint` | `golangci-lint run ./...` |
 | `make tools` | Installs the pinned golangci-lint |
 | `make test-hook` | Tests the Claude Code hooks (session start, project manager and pull request review) against stub commands; needs only bash |
+| `make test-release` | Tests `scripts/publish-release.sh` against a stub `gh`, and checks the release-please settings it relies on; needs only bash |
 | `make test-install` | Tests `install.sh` against stub commands; needs bash, and runs the installer under `TEST_SH` (default `/bin/dash`) |
 | `make test-install-docker` | Runs `install.sh` end to end in `alpine:3.23` against the real binary served over local HTTP, then the stub tests under BusyBox ash; needs Docker |
 | `make integration` | Integration probes against a real `dnsmasq`; Linux only, with `dnsmasq` 2.91 or later and `dig` on PATH |
@@ -467,15 +468,21 @@ Releases come from Conventional Commits on `main`, through
   `build: release <version>`, with the next version and the changelog.
   Before 1.0 a breaking change bumps the minor version.
 - Merging that pull request tags `v<version>` and creates the GitHub
-  release. A second job in the same workflow checks out the tag, runs
-  `make dist VERSION=<tag>` and uploads the three files:
-  `dnsmasq-manager-linux-amd64`, `dnsmasq-manager-linux-amd64.sha256` and
-  `install.sh`.
-- Known gap: between the release being created and the upload finishing,
-  the latest release has no assets, so an install in that window fails at
-  download and changes nothing. Run it again once the assets are there.
+  release as a draft. A second job in the same workflow, `assets`, checks
+  out the tag, runs `make dist VERSION=<tag>` and calls
+  `scripts/publish-release.sh`, which uploads the three files
+  (`dnsmasq-manager-linux-amd64`, `dnsmasq-manager-linux-amd64.sha256` and
+  `install.sh`) and then publishes the release.
+- The release stays a draft until the `assets` job has attached the files
+  and published it, so the latest release always has its files. If the job
+  fails, the release stays a draft and `latest` stays on the previous
+  release.
 - If the `assets` job fails, re-run that job on its own; the upload uses
-  `--clobber`, so overwriting files from a partial run is safe.
+  `--clobber`, so overwriting files from a partial run is safe. Once the
+  release is published the script uploads nothing, so re-running a job
+  that succeeded changes nothing. Do this before merging the
+  next release pull request: publishing an older draft after a newer
+  release may make the older one `latest`.
 
 One-time setup by the repository owner:
 

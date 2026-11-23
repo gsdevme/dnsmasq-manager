@@ -6,7 +6,9 @@
       "initial-version": "0.1.0",
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,
-      "pull-request-title-pattern": "build: release ${version}"
+      "pull-request-title-pattern": "build: release ${version}",
+      "draft": true,
+      "force-tag-creation": true
     }
   }
 }
